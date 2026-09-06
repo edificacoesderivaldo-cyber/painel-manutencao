@@ -8,7 +8,7 @@ import base64
 st.set_page_config(page_title="Painel de Manutenção Predial", layout="wide", initial_sidebar_state="collapsed")
 
 st.title("📊 Painel de Manutenção Predial")
-st.markdown("**Análise de chamados — SESI e SENAI**  |  Envie sua planilha Excel para gerar o relatório completo")
+st.markdown("**Análise de chamados e controle financeiro — SESI e SENAI**  |  Envie sua planilha Excel para gerar o relatório completo")
 
 uploaded_file = st.file_uploader("📎 Envie o arquivo Excel (CONTROLE_DE_O_S.xlsx)", type=["xlsx", "xls"])
 
@@ -56,9 +56,14 @@ os_col = next((c for c in df_os.columns if 'O.S' in c.upper() or 'OS' in c.upper
 df_os['NR'] = pd.to_numeric(df_os[nr_col], errors='coerce').fillna(0).astype(int) if nr_col else 0
 df_os['O.S'] = pd.to_numeric(df_os[os_col], errors='coerce').fillna(0).astype(int)
 
+# Detecção de coluna de data de envio
 data_col = next((c for c in df_os.columns if 'DATA' in c.upper() and 'ENVIO' in c.upper()), None)
 if data_col:
     df_os[data_col] = pd.to_datetime(df_os[data_col], errors='coerce')
+
+# Detecção de coluna de mês de emissão / nota fiscal / conclusão
+mes_col = next((c for c in df_os.columns if any(k in c.upper() for k in ['MÊS', 'MES', 'EMISSÃO', 'EMISSAO', 'COMPETÊNCIA', 'COMPETENCIA'])), None)
+nf_col = next((c for c in df_os.columns if any(k in c.upper() for k in ['NF', 'NFE', 'NOTA FISCAL'])), None)
 
 hoje = datetime.now()
 total_chamados = len(df_os)
@@ -76,6 +81,11 @@ if data_col:
             if dias > 30:
                 abertos_30 += 1
 
+MESES_PT = {
+    1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun',
+    7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'
+}
+
 data = {
     'chamados': [],
     'status_dist': {},
@@ -92,12 +102,31 @@ for _, row in df_os.iterrows():
     status = str(row['STATUS'])
     dias_abertos = None
     data_envio_str = ''
+    mes_emissao = 'Não Definido'
+    
     if data_col and pd.notna(row[data_col]):
         data_envio_dt = pd.to_datetime(row[data_col])
         data_envio_str = data_envio_dt.strftime('%Y-%m-%d')
+        mes_emissao = f"{MESES_PT.get(data_envio_dt.month, data_envio_dt.month)}/{data_envio_dt.year}"
         if status != 'CONCLUIDO':
             dias_abertos = (hoje - data_envio_dt).days
-    
+            
+    if mes_col and pd.notna(row[mes_col]) and str(row[mes_col]).strip() != '':
+        mes_emissao = str(row[mes_col]).strip()
+
+    num_nf = str(row[nf_col]).strip() if nf_col and pd.notna(row[nf_col]) else '-'
+    if num_nf.lower() == 'nan': num_nf = '-'
+
+    # Regra de liberação de pagamento para NFE
+    if status == 'CONCLUIDO':
+        status_pagamento = 'LIBERADO P/ NFE'
+    elif status in ['EM EXECUÇÃO', 'LIBERADO']:
+        status_pagamento = 'EM MEDIÇÃO'
+    elif status == 'PARALISADO':
+        status_pagamento = 'BLOQUEADO'
+    else:
+        status_pagamento = 'PENDENTE ORÇAMENTO'
+
     desc_val = str(row[desc_col]).strip() if desc_col and pd.notna(row[desc_col]) else ''
     if desc_val.lower() == 'nan':
         desc_val = '-'
@@ -110,7 +139,10 @@ for _, row in df_os.iterrows():
         'descricao': desc_val,
         'valor': round(valor, 2),
         'data_envio': data_envio_str,
-        'dias_abertos': dias_abertos
+        'dias_abertos': dias_abertos,
+        'mes_emissao': mes_emissao,
+        'status_pagamento': status_pagamento,
+        'nota_fiscal': num_nf
     })
 
 for status, count in df_os['STATUS'].value_counts().items():
@@ -151,7 +183,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Manutenção Predial - SESI/SENAI</title>
+    <title>Painel de Manutenção Predial e Pagamentos - SESI/SENAI</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
     <style>
         * {
@@ -170,6 +202,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             --dark: #0b0b0b;
             --text: #333;
             --border: #ddd;
+            --pay-bg: #f0f7ff;
+            --pay-border: #b8daff;
         }
 
         body {
@@ -263,6 +297,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border: 1px solid var(--border);
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             margin-bottom: 24px;
+        }
+
+        .payment-card {
+            border: 2px solid var(--primary);
+            box-shadow: 0 4px 12px rgba(57, 135, 229, 0.12);
+            background: #ffffff;
+        }
+
+        .payment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            padding-bottom: 14px;
+            border-bottom: 2px solid var(--light);
+            margin-bottom: 20px;
+        }
+
+        .payment-badge-status {
+            background: #e7f3ff;
+            color: #0d6efd;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
 
         .card-title {
@@ -368,6 +429,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-color: var(--primary);
         }
 
+        .filter-chip-pay {
+            border-color: #bee5eb;
+            background: #f8fbff;
+        }
+
+        .filter-chip-pay.active {
+            background: #0d6efd;
+            border-color: #0d6efd;
+            color: white;
+        }
+
         .filter-input {
             padding: 8px 12px;
             border: 1px solid var(--border);
@@ -433,6 +505,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .status-aguardando-aprovação, .status-aguardando-aprovacao { background: #ffe5d0; color: #a04000; }
         .status-sem-status { background: #e9ecef; color: #495057; }
 
+        /* Badges de Pagamento / NFE */
+        .pay-badge-liberado {
+            background: #d1e7dd;
+            color: #0f5132;
+            border: 1px solid #badbcc;
+            font-weight: 700;
+        }
+        .pay-badge-medicao {
+            background: #cff4fc;
+            color: #055160;
+            border: 1px solid #b6effb;
+            font-weight: 600;
+        }
+        .pay-badge-bloqueado {
+            background: #f8d7da;
+            color: #842029;
+            border: 1px solid #f5c2c7;
+            font-weight: 600;
+        }
+        .pay-badge-pendente {
+            background: #fff3cd;
+            color: #664d03;
+            border: 1px solid #ffecb5;
+        }
+
         .unit-card {
             padding: 16px;
             background: white;
@@ -496,8 +593,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="container">
         <div class="header">
             <div>
-                <h1>📊 Painel de Manutenção Predial</h1>
-                <p>SESI e SENAI — Visão Geral de Chamados, Contratos e Indicadores</p>
+                <h1>📊 Painel de Manutenção Predial & Liberação de Pagamentos</h1>
+                <p>SESI e SENAI — Acompanhamento de Chamados, Emissão de NFE e Gestão Orçamentária</p>
             </div>
         </div>
 
@@ -527,7 +624,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Filtros Globais Interativos -->
         <div class="card">
-            <div class="card-title">🔍 Filtros Interativos</div>
+            <div class="card-title">🔍 Filtros Interativos Globais</div>
             <div class="filter-section" id="filters"></div>
         </div>
 
@@ -540,9 +637,84 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div id="unitLegendBottom"></div>
         </div>
 
-        <!-- Tabela Completa de Chamados -->
+        <!-- ======================================================= -->
+        <!-- NOVO PAINEL: CONTROLE DE PAGAMENTO / LIBERAÇÃO DE NFE  -->
+        <!-- ======================================================= -->
+        <div class="card payment-card" id="painelPagamentos">
+            <div class="payment-header">
+                <div>
+                    <h2 style="font-size: 20px; font-weight: 700; color: #0d6efd; display: flex; align-items: center; gap: 8px;">
+                        💳 Controle de Pagamentos & Liberação para NFE
+                    </h2>
+                    <p style="font-size: 13px; color: #666; margin-top: 4px;">
+                        Valide os serviços concluídos por mês de referência para autorizar a empresa a emitir a Nota Fiscal
+                    </p>
+                </div>
+                <div class="payment-badge-status" id="paySummaryBadge">
+                    Carregando resumo financeiro...
+                </div>
+            </div>
+
+            <!-- Mini KPIs de Pagamento -->
+            <div class="kpi-section" style="margin-bottom: 20px;">
+                <div class="kpi-card" style="border-left: 4px solid var(--success);">
+                    <div class="kpi-label">Liberado para Emitir NFE</div>
+                    <div class="kpi-value" id="payValLiberado" style="color: var(--success); font-size: 26px;">R$ 0,00</div>
+                    <div class="kpi-percent" id="payCountLiberado">0 O.S. aptas para faturamento</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--primary);">
+                    <div class="kpi-label">Em Medição / Andamento</div>
+                    <div class="kpi-value" id="payValMedicao" style="color: var(--primary); font-size: 26px;">R$ 0,00</div>
+                    <div class="kpi-percent" id="payCountMedicao">0 O.S. em execução</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--danger);">
+                    <div class="kpi-label">Bloqueado / Paralisado</div>
+                    <div class="kpi-value" id="payValBloqueado" style="color: var(--danger); font-size: 26px;">R$ 0,00</div>
+                    <div class="kpi-percent" id="payCountBloqueado">0 O.S. paralisadas</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #6c757d;">
+                    <div class="kpi-label">Total do Filtro de Pagamento</div>
+                    <div class="kpi-value" id="payValTotal" style="font-size: 26px;">R$ 0,00</div>
+                    <div class="kpi-percent" id="payCountTotal">0 chamados selecionados</div>
+                </div>
+            </div>
+
+            <!-- Filtro de Mês de Emissão / Competência -->
+            <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
+                <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
+                    📅 Filtrar por Mês de Emissão / Competência da Nota:
+                </div>
+                <div class="filter-group" id="payMonthFilters"></div>
+
+                <div style="font-weight: 600; font-size: 13px; color: #333; margin-top: 14px; margin-bottom: 8px;">
+                    📌 Filtrar por Status de Faturamento:
+                </div>
+                <div class="filter-group" id="payStatusFilters"></div>
+            </div>
+
+            <!-- Tabela de Liberação de Pagamentos -->
+            <div class="table-wrapper">
+                <table id="payTable">
+                    <thead>
+                        <tr style="background: #e9ecef;">
+                            <th>O.S</th>
+                            <th>NR</th>
+                            <th>Unidade</th>
+                            <th>Descrição</th>
+                            <th>Mês Competência</th>
+                            <th>Status O.S</th>
+                            <th>Liberação p/ NFE</th>
+                            <th style="text-align: right;">Valor a Faturar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="payTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tabela Completa de Chamados Geral -->
         <div class="card">
-            <div class="card-title">📋 Lista de Chamados</div>
+            <div class="card-title">📋 Lista Completa de Chamados</div>
             
             <div style="margin-bottom: 16px;">
                 <div style="font-weight: 600; font-size: 13px; color: #666; margin-bottom: 10px;">Filtrar por Status na Tabela</div>
@@ -578,7 +750,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <div class="footer">
-            <p>Atualizado em <span id="updateTime"></span> | Painel Interativo de Gestão de Manutenção Predial</p>
+            <p>Atualizado em <span id="updateTime"></span> | Painel Integrado de Gestão Predial & Faturamento SESI/SENAI</p>
         </div>
     </div>
 
@@ -599,7 +771,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         let state = {
             tickets: [],
-            filters: { status: [], unidade: [], os: '', listStatus: '' }
+            filters: { status: [], unidade: [], os: '', listStatus: '' },
+            payFilters: { mes: '', statusPagamento: '' }
         };
 
         function init() {
@@ -608,6 +781,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('totalTickets').textContent = state.tickets.length;
             renderFilters();
             renderListStatusFilter();
+            renderPaymentMonthFilters();
             render();
         }
 
@@ -620,6 +794,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const matchUnidade = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
                 const matchListStatus = state.filters.listStatus === '' || t.status === state.filters.listStatus;
                 return matchStatus && matchUnidade && matchListStatus;
+            });
+        }
+
+        function getPayFiltered() {
+            return state.tickets.filter(t => {
+                const matchUnidade = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
+                const matchMes = state.payFilters.mes === '' || t.mes_emissao === state.payFilters.mes;
+                const matchPayStatus = state.payFilters.statusPagamento === '' || t.status_pagamento === state.payFilters.statusPagamento;
+                return matchUnidade && matchMes && matchPayStatus;
             });
         }
 
@@ -776,6 +959,128 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('filters').innerHTML = html;
         }
 
+        function renderPaymentMonthFilters() {
+            const mesesValidos = [...new Set(state.tickets.map(t => t.mes_emissao))].filter(m => m && m !== 'Não Definido').sort();
+            
+            let htmlMes = `
+                <span class="filter-chip filter-chip-pay ${state.payFilters.mes === '' ? 'active' : ''}" onclick="setPayMonth('')">
+                    Todos os Meses
+                </span>
+            `;
+            mesesValidos.forEach(m => {
+                const isActive = state.payFilters.mes === m;
+                htmlMes += `
+                    <span class="filter-chip filter-chip-pay ${isActive ? 'active' : ''}" onclick="setPayMonth('${m}')">
+                        📅 ${m}
+                    </span>
+                `;
+            });
+            document.getElementById('payMonthFilters').innerHTML = htmlMes;
+
+            const payStatuses = ['LIBERADO P/ NFE', 'EM MEDIÇÃO', 'BLOQUEADO', 'PENDENTE ORÇAMENTO'];
+            let htmlStatus = `
+                <span class="filter-chip filter-chip-pay ${state.payFilters.statusPagamento === '' ? 'active' : ''}" onclick="setPayStatus('')">
+                    Todos os Status
+                </span>
+            `;
+            payStatuses.forEach(s => {
+                const isActive = state.payFilters.statusPagamento === s;
+                htmlStatus += `
+                    <span class="filter-chip filter-chip-pay ${isActive ? 'active' : ''}" onclick="setPayStatus('${s}')">
+                        ${s}
+                    </span>
+                `;
+            });
+            document.getElementById('payStatusFilters').innerHTML = htmlStatus;
+        }
+
+        function setPayMonth(m) {
+            state.payFilters.mes = m;
+            renderPaymentMonthFilters();
+            renderPaymentPanel();
+        }
+
+        function setPayStatus(s) {
+            state.payFilters.statusPagamento = s;
+            renderPaymentMonthFilters();
+            renderPaymentPanel();
+        }
+
+        function renderPaymentPanel() {
+            const payList = getPayFiltered();
+
+            const liberados = payList.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
+            const emMedicao = payList.filter(t => t.status_pagamento === 'EM MEDIÇÃO');
+            const bloqueados = payList.filter(t => t.status_pagamento === 'BLOQUEADO');
+
+            const valLiberado = liberados.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const valMedicao = emMedicao.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const valBloqueado = bloqueados.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const valTotal = payList.reduce((acc, t) => acc + (t.valor || 0), 0);
+
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+
+            document.getElementById('payValLiberado').textContent = `R$ ${fmt(valLiberado)}`;
+            document.getElementById('payCountLiberado').textContent = `${liberados.length} O.S. prontas para faturar`;
+
+            document.getElementById('payValMedicao').textContent = `R$ ${fmt(valMedicao)}`;
+            document.getElementById('payCountMedicao').textContent = `${emMedicao.length} O.S. em andamento`;
+
+            document.getElementById('payValBloqueado').textContent = `R$ ${fmt(valBloqueado)}`;
+            document.getElementById('payCountBloqueado').textContent = `${bloqueados.length} O.S. paralisadas`;
+
+            document.getElementById('payValTotal').textContent = `R$ ${fmt(valTotal)}`;
+            document.getElementById('payCountTotal').textContent = `${payList.length} chamados filtrados`;
+
+            const mesTxt = state.payFilters.mes ? `Competência: ${state.payFilters.mes}` : 'Visão Geral (Todos os Meses)';
+            document.getElementById('paySummaryBadge').textContent = `Faturamento: R$ ${fmt(valLiberado)} (${mesTxt})`;
+
+            let rowsHTML = payList
+                .sort((a, b) => {
+                    // Ordenar primeiro os liberados para faturamento
+                    if (a.status_pagamento === 'LIBERADO P/ NFE' && b.status_pagamento !== 'LIBERADO P/ NFE') return -1;
+                    if (a.status_pagamento !== 'LIBERADO P/ NFE' && b.status_pagamento === 'LIBERADO P/ NFE') return 1;
+                    return b.valor - a.valor;
+                })
+                .map(t => {
+                    let badgeClass = 'pay-badge-pendente';
+                    let icone = '⏳';
+                    if (t.status_pagamento === 'LIBERADO P/ NFE') {
+                        badgeClass = 'pay-badge-liberado';
+                        icone = '✅';
+                    } else if (t.status_pagamento === 'EM MEDIÇÃO') {
+                        badgeClass = 'pay-badge-medicao';
+                        icone = '🔄';
+                    } else if (t.status_pagamento === 'BLOQUEADO') {
+                        badgeClass = 'pay-badge-bloqueado';
+                        icone = '⛔';
+                    }
+
+                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+
+                    return `
+                        <tr>
+                            <td style="font-weight: 700; color: #0d6efd;">#${t.os}</td>
+                            <td>${t.nr}</td>
+                            <td><strong>${t.unidade}</strong></td>
+                            <td style="max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                            <td><span style="font-size: 12px; font-weight: 600; color: #495057;">${t.mes_emissao}</span></td>
+                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
+                            <td><span class="status-badge ${badgeClass}">${icone} ${t.status_pagamento}</span></td>
+                            <td style="text-align: right; font-weight: 700; color: ${t.status_pagamento === 'LIBERADO P/ NFE' ? '#0ca30c' : '#333'};">
+                                R$ ${fmt(t.valor)}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+            if (payList.length === 0) {
+                rowsHTML = '<tr><td colspan="8" style="text-align:center; padding: 24px; color: #999;">Nenhum chamado de pagamento localizado para este filtro.</td></tr>';
+            }
+
+            document.getElementById('payTableBody').innerHTML = rowsHTML;
+        }
+
         function toggleFilter(type, value) {
             if (state.filters[type].includes(value)) {
                 state.filters[type] = state.filters[type].filter(v => v !== value);
@@ -848,7 +1153,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             });
 
-            // Unit Bar Chart (empilhado)
+            // Unit Bar Chart
             const unitData = {};
             filtered.forEach(t => {
                 if (!unitData[t.unidade]) {
@@ -988,6 +1293,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             renderContracts();
             renderTempoAberto();
             renderCharts();
+            renderPaymentPanel();
             renderTable();
         }
 
@@ -1000,7 +1306,7 @@ st.subheader("📊 Dashboard Interativo")
 
 html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
 
-st.components.v1.html(html_content, height=3600, scrolling=True)
+st.components.v1.html(html_content, height=4400, scrolling=True)
 
 st.subheader("📥 Download dos Arquivos")
 col1, col2 = st.columns(2)
@@ -1009,9 +1315,9 @@ with col1:
     st.download_button(
         label="📄 Download HTML Completo",
         data=html_content,
-        file_name=f"painel_manutencao_{datetime.now().strftime('%Y%m%d')}.html",
+        file_name=f"painel_manutencao_pagamentos_{datetime.now().strftime('%Y%m%d')}.html",
         mime="text/html"
     )
 
 with col2:
-    st.info("✅ Dashboard gerado com sucesso com todos os painéis, filtros e tabela de chamados!")
+    st.info("✅ Painel de Pagamentos e Chamados gerado com sucesso!")
