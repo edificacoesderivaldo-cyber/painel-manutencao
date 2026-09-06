@@ -1,125 +1,111 @@
-# 📊 Painel de Manutenção Predial — Com Google Sheets
-
-Aplicativo Streamlit que **conecta diretamente ao seu Google Sheets** e gera dashboard em tempo real.
-
-## ✨ O que você ganha
-
-✅ **Sem upload manual** — dados sempre do Sheets  
-✅ **Tempo real** — atualiza a cada 5 minutos  
-✅ **Dashboard interativo** — KPIs, gráficos, filtros  
-✅ **Funciona em qualquer navegador** — desktop, tablet, celular  
-✅ **Seguro** — credenciais privadas (Google Cloud Service Account)  
-
----
-
-## 🚀 Como usar
-
-### **Pré-requisitos**
-
-Você precisa ter feito os **Passos 1-5** descritos anteriormente:
-- ✅ Criado um projeto no Google Cloud
-- ✅ Ativado a Google Sheets API
-- ✅ Criado uma Service Account
-- ✅ Gerado o arquivo JSON das credenciais
-- ✅ Compartilhado a planilha com a Service Account
-
-Se não fez, volte aos passos anteriores!
-
----
-
-### **Instalação (seu computador)**
-
-1. **Baixe os arquivos:**
-   - `painel_app_sheets.py`
-   - `requirements_sheets.txt`
-   - `credentials.json` (o arquivo que você baixou do Google Cloud)
-
-2. **Coloque tudo na mesma pasta**
-
-3. **Abra o terminal nessa pasta e execute:**
-
-   ```bash
-   pip install -r requirements_sheets.txt
-   streamlit run painel_app_sheets.py
-   ```
-
-4. **Uma janela do navegador vai abrir automaticamente** com o painel conectado ao Sheets!
-
----
-
-### **Hospedado na Nuvem (Streamlit Cloud - Gratuito)**
-
-1. **Suba os arquivos para o GitHub:**
-   - Crie um repositório novo
-   - Coloque `painel_app_sheets.py` e `requirements_sheets.txt`
-   - Coloque também o `credentials.json` (pode ser privado)
-
-2. **No Streamlit Cloud:**
-   - Clique "New App"
-   - Selecione seu repositório
-   - Aponte para `painel_app_sheets.py`
-   - Clique Deploy
-
-3. **Pronto!** Você tem um link público que atualiza sempre que você mexe no Sheets
-
----
-
-## 📋 Estrutura do Painel
-
-### 📈 **Indicadores Gerais**
-- Total, Concluídos, Em execução, Paralisados, Aguardando orçamento
-
-### 💰 **Saldo em Contrato**
-- SESI e SENAI com barras de progresso
-
-### 📊 **Status Geral**
-- Gráfico pizza com distribuição
-
-### 🏢 **Chamados por Unidade**
-- Tabela e gráfico empilhado
-- Valores investidos
-- Cobertura de orçamentos
-
-### 📋 **Lista de Chamados**
-- Filtros por status, unidade, busca
-- Detalhes completos de cada O.S.
-
----
-
-## 🔄 Atualizações Automáticas
-
-**Tudo que você mudar no Google Sheets, o painel atualiza automaticamente** (cache de 5 minutos).
-
-Não precisa fazer upload, não precisa mexer em nada — é tudo automático!
-
----
-
-## ⚙️ Configuração (se precisar mudar algo)
-
-Se a planilha tiver um ID diferente, abra `painel_app_sheets.py` e mude essa linha:
-
-```python
-SHEET_ID = "1OWmc_hWsXznqeTMhFdfZCuZ9qqUjxk_1"  # ← Substitua pelo seu ID
+📊 Painel de Manutenção Predial - SESI/SENAI
+Sistema interativo para gestão e análise de chamados de manutenção predial das unidades SESI e SENAI.
+🎯 Funcionalidades
+✅ Upload de Planilha Excel - Carregue sua planilha com os dados de chamados
+📈 KPIs Gerais - Visualize total, concluídos, em execução, paralisados, etc.
+💰 Saldo em Contrato - Acompanhe utilização dos contratos SESI e SENAI
+⏱️ Tempo Médio em Aberto - Análise de chamados por faixa de dias
+📊 Distribuição de Status - Gráfico de rosca com distribuição de status
+🏢 Chamados por Unidade - Gráfico empilhado + cards com valores investidos
+💾 Download HTML - Exporte o dashboard como arquivo HTML interativo
+🚀 Como Usar
+Online (Streamlit Cloud)
+Acesse: https://painel-manutencao-jgtxythyddzaqynntg7sfh.streamlit.app
+Clique em "Envie seu arquivo Excel"
+Selecione a planilha `CONTROLE_DE_O_S.xlsx`
+O dashboard será gerado automaticamente
+Clique em "Download HTML" para salvar localmente
+Localmente (seu computador)
+Pré-requisitos
+Python 3.8+
+pip (gerenciador de pacotes Python)
+Instalação
+Clone o repositório:
+```bash
+git clone https://github.com/edificacoesderivaldo-cyber/painel-manutencao.git
+cd painel-manutencao
 ```
-
+Instale as dependências:
+```bash
+pip install -r requirements.txt
+```
+Execute o app:
+```bash
+streamlit run painel_app_v2.py
+```
+Abra o navegador em: `http://localhost:8501`
+📋 Formato da Planilha
+A planilha deve ter as seguintes abas:
+Aba "O.S" (header na linha 3)
+Colunas obrigatórias:
+NR - Número do registro
+O.S - Número da ordem de serviço
+UNIDADE - Nome da unidade (SESI/SENAI)
+DATA DE ENVIO  DO CHAMADO - Data do chamado (dois espaços)
+STATUS - Status do chamado (com espaço: "STATUS ")
+DESCRIÇÃO DO SERVIÇO - Descrição breve
+VALOR INICIAL DO SERVIÇO - Valor investido
+Aba "SALDO" (header na linha 1)
+Contém informações dos contratos SESI e SENAI
+Linhas: contrato, saldo, etc.
+🎨 Layout do Dashboard
+Seção 1: KPIs Gerais
+Total de Chamados
+Concluídos
+Em Execução
+Paralisados
+Abertos >30 dias
+Valor Investido Total
+Seção 2: Saldo em Contrato
+SESI: Contrato, Utilizado, Barra de Progresso, Saldo Disponível
+SENAI: Contrato, Utilizado, Barra de Progresso, Saldo Disponível
+Seção 3: Tempo Médio em Aberto
+Média de dias em aberto
+Faixas: 0-30 dias (verde), 30-60 dias (amarelo), >60 dias (vermelho)
+Seção 4: Distribuição de Status
+Gráfico de rosca com proporções por status
+Seção 5: Chamados por Unidade
+Gráfico de barras horizontais empilhadas (cores por status)
+Legenda de status
+Cards com: Nome da unidade | Quantidade de chamados | Valor investido
+📊 Status Disponíveis
+Status	Cor
+CONCLUIDO	🟢 Verde
+EM EXECUÇÃO	🔵 Azul
+PARALISADO	🔴 Vermelho
+AGUARDANDO ORÇAMENTO	🟨 Amarelo
+LIBERADO	🟩 Verde-água
+PROJETO	⬜ Cinza
+PLANEJAMENTO	🟪 Roxo
+AGUARDANDO APROVAÇÃO	🟧 Laranja
+🔧 Tecnologias
+Frontend: HTML5 + Chart.js (gráficos)
+Backend: Python + Streamlit (app web)
+Data: Pandas (processamento de dados)
+Excel: openpyxl (leitura de planilhas)
+📝 Estrutura do Projeto
+```
+painel-manutencao/
+├── painel_app_v2.py          # App Streamlit (NOVO)
+├── requirements.txt           # Dependências Python
+├── README.md                  # Este arquivo
+└── .streamlit/
+    └── config.toml           # Configurações Streamlit (opcional)
+```
+🐛 Troubleshooting
+Erro: "ModuleNotFoundError: No module named 'streamlit'"
+Solução: Instale as dependências com `pip install -r requirements.txt`
+Erro: "Arquivo Excel não tem a aba 'O.S'"
+Solução: Certifique-se de que o arquivo tem as abas corretas: "O.S" e "SALDO"
+Erro: "Arquivo Excel não carrega"
+Solução: Verifique se:
+O arquivo é `.xlsx` ou `.xls`
+A aba "O.S" tem headers na linha 3
+As colunas estão com os nomes exatos (respeitando espaços)
+📧 Contato
+Desenvolvido para edificacoesderivaldo-cyber
+Dúvidas ou sugestões? Abra uma issue no GitHub.
+📄 Licença
+Privado - Uso interno SESI/SENAI
 ---
-
-## 🐛 Troubleshooting
-
-**Erro: "credentials.json not found"**
-- Coloque o arquivo JSON na mesma pasta do `painel_app_sheets.py`
-
-**Erro: "Permission denied"**
-- Verifique se você compartilhou a planilha com o email da Service Account
-
-**Painel não atualiza**
-- Aguarde 5 minutos (tempo do cache)
-- Ou abra novamente a página do navegador
-
----
-
-## 💬 Dúvidas?
-
-É só me chamar — estou aqui para ajudar!
-
-**Happy dashboarding! 📊**
+Última atualização: 5 de setembro de 2026
