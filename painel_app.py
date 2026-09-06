@@ -629,7 +629,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
         # ============== RENDERIZAR DASHBOARD ==============
-        st.subheader("📊 Dashboard Interativo")
+        st.subheader("📊Dashboard Interativo")
         
         # Gerar HTML
         html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
