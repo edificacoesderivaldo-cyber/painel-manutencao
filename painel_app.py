@@ -487,6 +487,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-bottom: 1px solid var(--border);
         }
 
+        tfoot td {
+            padding: 14px 12px;
+            font-weight: 700;
+            border-top: 2px solid #333;
+            background: #f1f5f9;
+        }
+
         tbody tr:hover {
             background: var(--light);
         }
@@ -718,7 +725,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </tr>
                     </thead>
                     <tbody id="payTableBody"></tbody>
+                    <tfoot id="payTableFoot"></tfoot>
                 </table>
+            </div>
+
+            <!-- Faixa de Resumo do Fechamento de Faturamento -->
+            <div id="paySummaryFooter" style="margin-top: 18px; padding: 14px 20px; background: #e8f4fd; border-radius: 8px; border-left: 5px solid #0d6efd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div id="paySummaryFooterText" style="font-size: 14px; font-weight: 600; color: #0a58ca;">
+                    Fechamento de Faturamento
+                </div>
+                <div id="paySummaryFooterVal" style="font-size: 18px; font-weight: 800; color: #0ca30c;">
+                    R$ 0,00
+                </div>
             </div>
         </div>
 
@@ -815,15 +833,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const matchMes = state.payFilters.mes === '' || t.mes_emissao === state.payFilters.mes;
                 const matchPayStatus = state.payFilters.statusPagamento === '' || t.status_pagamento === state.payFilters.statusPagamento;
                 return matchUnidade && matchCasa && matchMes && matchPayStatus;
-            });
-        }
-
-        function getPayFiltered() {
-            return state.tickets.filter(t => {
-                const matchUnidade = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
-                const matchMes = state.payFilters.mes === '' || t.mes_emissao === state.payFilters.mes;
-                const matchPayStatus = state.payFilters.statusPagamento === '' || t.status_pagamento === state.payFilters.statusPagamento;
-                return matchUnidade && matchMes && matchPayStatus;
             });
         }
 
@@ -1133,6 +1142,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
 
             document.getElementById('payTableBody').innerHTML = rowsHTML;
+
+            // Renderizar Linha Final de Totalização (tfoot)
+            const footHTML = `
+                <tr>
+                    <td colspan="4" style="font-size: 13px; text-transform: uppercase; color: #1e293b;">
+                        📌 TOTAL GERAL DO FILTRO: <span style="color: #0d6efd;">${state.payFilters.casa || 'SESI + SENAI'}</span> | <span style="color: #055160;">${state.payFilters.mes || 'TODOS OS MESES'}</span>
+                    </td>
+                    <td colspan="4" style="text-align: right; color: #475569; font-size: 12px;">
+                        Liberado para NFE: <strong style="color: #0ca30c;">R$ ${fmt(valLiberado)}</strong> (${liberados.length} O.S.) &nbsp;|&nbsp; Total da Seleção (${payList.length} O.S.):
+                    </td>
+                    <td style="text-align: right; font-size: 15px; color: #0f172a; background: #e2e8f0;">
+                        R$ ${fmt(valTotal)}
+                    </td>
+                </tr>
+            `;
+            document.getElementById('payTableFoot').innerHTML = footHTML;
+
+            // Atualizar barra inferior de fechamento
+            const casaNome = state.payFilters.casa ? state.payFilters.casa : 'SESI + SENAI';
+            const mesNome = state.payFilters.mes ? state.payFilters.mes : 'Todos os Meses';
+            document.getElementById('paySummaryFooterText').innerHTML = `
+                🏷️ <strong>Resumo do Faturamento:</strong> Entidade: <u>${casaNome}</u> | Mês de Competência: <u>${mesNome}</u> | Aptos para NFE: <strong>${liberados.length} chamados</strong>
+            `;
+            document.getElementById('paySummaryFooterVal').innerHTML = `
+                Total Faturamento Liberado: R$ ${fmt(valLiberado)}
+            `;
         }
 
         function toggleFilter(type, value) {
