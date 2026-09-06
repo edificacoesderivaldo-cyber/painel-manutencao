@@ -8,26 +8,27 @@ import base64
 st.set_page_config(page_title="Painel de Manutenção Predial", layout="wide", initial_sidebar_state="collapsed")
 
 st.title("📊 Painel de Manutenção Predial")
-st.markdown("**Análise de chamados — SESI e SENAI**  |  Envie sua planilha Excel para gerar o relatório")
+st.markdown("**Análise de chamados — SESI e SENAI**  |  Envie sua planilha Excel para gerar o relatório completo")
 
-# ============== UPLOAD ==============
 uploaded_file = st.file_uploader("📎 Envie o arquivo Excel (CONTROLE_DE_O_S.xlsx)", type=["xlsx", "xls"])
 
 if not uploaded_file:
     st.info("👉 Clique no botão acima para fazer upload da sua planilha Excel com os chamados de manutenção.")
     st.stop()
 
-# ============== CARREGAR E PROCESSAR DADOS ==============
 try:
     df_os = pd.read_excel(uploaded_file, sheet_name='O.S', header=2)
-    df_saldo = pd.read_excel(uploaded_file, sheet_name='SALDO', header=0)
 except Exception as e:
-    st.error(f"❌ Erro ao carregar arquivo: {e}")
+    st.error(f"❌ Erro ao carregar aba 'O.S': {e}")
     st.stop()
+
+try:
+    df_saldo = pd.read_excel(uploaded_file, sheet_name='SALDO', header=0)
+except Exception:
+    df_saldo = None
 
 df_os = df_os.dropna(subset=['O.S']).copy()
 
-# ============== NORMALIZAR DADOS ==============
 def norm_status(s):
     if pd.isna(s) or s == '': return "SEM STATUS"
     s = str(s).strip().upper()
@@ -38,32 +39,35 @@ def norm_unidade(u):
     if pd.isna(u): return "NÃO INFORMADA"
     return str(u).strip().upper().replace("GUARA", "GUARÁ")
 
-df_os['STATUS'] = df_os['STATUS '].apply(norm_status)
-df_os['UNIDADE'] = df_os['UNIDADE'].apply(norm_unidade)
+status_col = next((c for c in df_os.columns if 'STATUS' in c.upper()), 'STATUS')
+unidade_col = next((c for c in df_os.columns if 'UNIDADE' in c.upper()), 'UNIDADE')
 
-# Coluna de valor
+df_os['STATUS'] = df_os[status_col].apply(norm_status)
+df_os['UNIDADE'] = df_os[unidade_col].apply(norm_unidade)
+
 valor_col = next((c for c in df_os.columns if 'VALOR' in c.upper() and 'INICIAL' in c.upper()), None)
 if valor_col:
-    df_os[valor_col] = pd.to_numeric(df_os[valor_col], errors='coerce')
+    df_os[valor_col] = pd.to_numeric(df_os[valor_col], errors='coerce').fillna(0.0)
 
-df_os['NR'] = pd.to_numeric(df_os['NR'], errors='coerce').fillna(0).astype(int)
-df_os['O.S'] = pd.to_numeric(df_os['O.S'], errors='coerce').fillna(0).astype(int)
+desc_col = next((c for c in df_os.columns if 'DESCRI' in c.upper()), None)
+nr_col = next((c for c in df_os.columns if c.strip().upper() == 'NR'), None)
+os_col = next((c for c in df_os.columns if 'O.S' in c.upper() or 'OS' in c.upper()), 'O.S')
 
-# Data de envio
+df_os['NR'] = pd.to_numeric(df_os[nr_col], errors='coerce').fillna(0).astype(int) if nr_col else 0
+df_os['O.S'] = pd.to_numeric(df_os[os_col], errors='coerce').fillna(0).astype(int)
+
 data_col = next((c for c in df_os.columns if 'DATA' in c.upper() and 'ENVIO' in c.upper()), None)
 if data_col:
     df_os[data_col] = pd.to_datetime(df_os[data_col], errors='coerce')
 
-# ============== CALCULAR MÉTRICAS ==============
 hoje = datetime.now()
 total_chamados = len(df_os)
 concluido = len(df_os[df_os['STATUS'] == 'CONCLUIDO'])
 em_execucao = len(df_os[df_os['STATUS'] == 'EM EXECUÇÃO'])
 paralisado = len(df_os[df_os['STATUS'] == 'PARALISADO'])
+aguard_orcamento = len(df_os[df_os['STATUS'] == 'AGUARDANDO ORÇAMENTO'])
+valor_total = float(df_os[valor_col].sum() if valor_col else 0.0)
 
-valor_total = float(df_os[valor_col].sum() if valor_col else 0)
-
-# Abertos com mais de 30 dias
 abertos_30 = 0
 if data_col:
     for _, row in df_os.iterrows():
@@ -72,33 +76,40 @@ if data_col:
             if dias > 30:
                 abertos_30 += 1
 
-# ============== PREPARAR DADOS JSON ==============
 data = {
     'chamados': [],
     'status_dist': {},
     'unidades': {},
     'totais': {},
     'contracts': {
-        'sesi': {'contrato': 1440000, 'utilizado': 0, 'saldo': 1188238.58},
-        'senai': {'contrato': 1440000, 'utilizado': 0, 'saldo': 1066830.71}
+        'sesi': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0},
+        'senai': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0}
     }
 }
 
 for _, row in df_os.iterrows():
-    valor = float(row[valor_col]) if valor_col and pd.notna(row[valor_col]) else 0
+    valor = float(row[valor_col]) if valor_col and pd.notna(row[valor_col]) else 0.0
     status = str(row['STATUS'])
     dias_abertos = None
-    if status != 'CONCLUIDO' and data_col and pd.notna(row[data_col]):
-        dias_abertos = (hoje - pd.to_datetime(row[data_col])).days
+    data_envio_str = ''
+    if data_col and pd.notna(row[data_col]):
+        data_envio_dt = pd.to_datetime(row[data_col])
+        data_envio_str = data_envio_dt.strftime('%Y-%m-%d')
+        if status != 'CONCLUIDO':
+            dias_abertos = (hoje - data_envio_dt).days
     
+    desc_val = str(row[desc_col]).strip() if desc_col and pd.notna(row[desc_col]) else ''
+    if desc_val.lower() == 'nan':
+        desc_val = '-'
+
     data['chamados'].append({
         'nr': int(row['NR']),
         'os': int(row['O.S']),
         'unidade': str(row['UNIDADE']),
         'status': status,
-        'descricao': str(row.get('DESCRIÇÃO DO SERVIÇO', '')).strip(),
+        'descricao': desc_val,
         'valor': round(valor, 2),
-        'data_envio': str(row[data_col]).split()[0] if data_col and pd.notna(row[data_col]) else '',
+        'data_envio': data_envio_str,
         'dias_abertos': dias_abertos
     })
 
@@ -109,28 +120,32 @@ for unit in sorted(df_os['UNIDADE'].unique()):
     df_u = df_os[df_os['UNIDADE'] == unit]
     data['unidades'][str(unit)] = {
         'total': len(df_u),
-        'valor': round(float(df_u[valor_col].sum() if valor_col else 0), 2),
+        'valor': round(float(df_u[valor_col].sum() if valor_col else 0.0), 2),
         'com_orcamento': len(df_u[df_u[valor_col] > 0]) if valor_col else 0,
         'status': {str(k): int(v) for k, v in df_u['STATUS'].value_counts().items()}
     }
 
 df_sesi = df_os[df_os['UNIDADE'].str.contains('SESI', case=False, na=False)]
 df_senai = df_os[df_os['UNIDADE'].str.contains('SENAI', case=False, na=False)]
-data['contracts']['sesi']['utilizado'] = round(float(df_sesi[valor_col].sum() if valor_col else 0), 2)
-data['contracts']['senai']['utilizado'] = round(float(df_senai[valor_col].sum() if valor_col else 0), 2)
-data['contracts']['sesi']['saldo'] = data['contracts']['sesi']['contrato'] - data['contracts']['sesi']['utilizado']
-data['contracts']['senai']['saldo'] = data['contracts']['senai']['contrato'] - data['contracts']['senai']['utilizado']
+
+sesi_utilizado = round(float(df_sesi[valor_col].sum() if valor_col else 0.0), 2)
+senai_utilizado = round(float(df_senai[valor_col].sum() if valor_col else 0.0), 2)
+
+data['contracts']['sesi']['utilizado'] = sesi_utilizado
+data['contracts']['senai']['utilizado'] = senai_utilizado
+data['contracts']['sesi']['saldo'] = round(data['contracts']['sesi']['contrato'] - sesi_utilizado, 2)
+data['contracts']['senai']['saldo'] = round(data['contracts']['senai']['contrato'] - senai_utilizado, 2)
 
 data['totais'] = {
     'total_chamados': total_chamados,
     'concluido': concluido,
     'em_execucao': em_execucao,
     'paralisado': paralisado,
+    'aguard_orcamento': aguard_orcamento,
     'abertos_30dias': abertos_30,
     'valor_total': round(valor_total, 2)
 }
 
-# ============== TEMPLATE HTML ==============
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -144,6 +159,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             padding: 0;
             box-sizing: border-box;
         }
+
         :root {
             --primary: #3987e5;
             --success: #0ca30c;
@@ -155,17 +171,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             --text: #333;
             --border: #ddd;
         }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #f8f9fa;
             color: var(--text);
             line-height: 1.6;
         }
+
         .container {
             max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }
+
         .header {
             display: flex;
             align-items: center;
@@ -177,119 +196,243 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-left: 4px solid var(--primary);
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
+
         .header h1 {
-            font-size: 24px;
+            font-size: 28px;
             margin: 0;
         }
-        .header .subtitle {
-            font-size: 12px;
-            color: #999;
-            margin-top: 4px;
+
+        .header p {
+            color: #666;
+            margin: 0;
+            font-size: 14px;
         }
-        .kpi-grid {
+
+        .kpi-section {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 16px;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
         }
+
         .kpi-card {
             background: white;
             padding: 20px;
             border-radius: 8px;
-            border-left: 4px solid var(--primary);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: all 0.3s;
         }
+
+        .kpi-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 4px 8px rgba(57, 135, 229, 0.1);
+        }
+
         .kpi-label {
             font-size: 12px;
-            color: #999;
+            color: #666;
             margin-bottom: 8px;
+            font-weight: 500;
             text-transform: uppercase;
         }
+
         .kpi-value {
-            font-size: 28px;
+            font-size: 32px;
             font-weight: bold;
-            color: var(--primary);
+            color: var(--dark);
+            margin-bottom: 4px;
         }
-        .grid-2col {
+
+        .kpi-percent {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .grid2 {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
         }
+
         .card {
             background: white;
             padding: 24px;
             border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            margin-bottom: 24px;
         }
+
         .card-title {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 600;
-            margin-bottom: 16px;
-            color: var(--text);
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--light);
         }
-        .chart-wrapper {
-            height: 300px;
-            position: relative;
-        }
+
         .contract-stat {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             margin-bottom: 12px;
-            font-size: 14px;
+            font-size: 13px;
         }
+
         .contract-label {
             color: #666;
         }
+
         .contract-value {
             font-weight: 600;
-            color: var(--primary);
+            color: var(--dark);
         }
+
         .progress-container {
-            margin: 16px 0;
+            margin-bottom: 16px;
         }
+
         .progress-label {
             display: flex;
             justify-content: space-between;
+            margin-bottom: 6px;
             font-size: 12px;
-            margin-bottom: 8px;
             color: #666;
         }
+
         .progress-bar {
             width: 100%;
-            height: 24px;
-            background: #e0e0e0;
-            border-radius: 12px;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
             overflow: hidden;
         }
+
         .progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, var(--success), var(--info));
+            background: linear-gradient(90deg, var(--info), var(--success));
+            border-radius: 4px;
             transition: width 0.3s;
         }
-        .unit-legend {
+
+        .chart-wrapper {
+            position: relative;
+            height: 320px;
+            margin: 20px 0;
+        }
+
+        .filter-section {
             display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            margin-bottom: 20px;
-            justify-content: center;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-        }
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            border-radius: 2px;
-        }
-        .unit-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            flex-direction: column;
             gap: 16px;
         }
+
+        .filter-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .filter-label {
+            font-weight: 600;
+            font-size: 13px;
+            color: #666;
+            display: block;
+            width: 100%;
+            margin-bottom: 4px;
+        }
+
+        .filter-chip {
+            display: inline-block;
+            padding: 6px 12px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .filter-chip:hover {
+            border-color: var(--primary);
+            background: var(--light);
+        }
+
+        .filter-chip.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .filter-input {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 13px;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        .filter-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(57, 135, 229, 0.1);
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            margin-top: 16px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        thead {
+            background: var(--light);
+        }
+
+        th {
+            padding: 12px;
+            text-align: left;
+            color: #666;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border);
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tbody tr:hover {
+            background: var(--light);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-concluido { background: #d4edda; color: #155724; }
+        .status-em-execução, .status-em-execucao { background: #d1ecf1; color: #0c5460; }
+        .status-paralisado { background: #f8d7da; color: #721c24; }
+        .status-aguardando-orçamento, .status-aguardando-orcamento { background: #fff3cd; color: #856404; }
+        .status-liberado { background: #d4edda; color: #155724; }
+        .status-projeto { background: #e2e3e5; color: #383d41; }
+        .status-planejamento { background: #d6d8db; color: #383d41; }
+        .status-aguardando-aprovação, .status-aguardando-aprovacao { background: #ffe5d0; color: #a04000; }
+        .status-sem-status { background: #e9ecef; color: #495057; }
+
         .unit-card {
             padding: 16px;
             background: white;
@@ -297,42 +440,55 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-radius: 8px;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
+
         .unit-card-name {
             font-weight: 600;
             color: #333;
             margin-bottom: 12px;
             font-size: 14px;
         }
+
         .unit-card-info {
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
         }
-        .unit-card-left {
-            flex: 1;
-        }
+
         .unit-card-label {
             font-size: 12px;
             color: #666;
             margin-bottom: 4px;
         }
+
         .unit-card-value {
             font-weight: 600;
             color: #333;
             font-size: 16px;
         }
-        .unit-card-right {
-            text-align: right;
-        }
+
         .unit-card-value-right {
             font-weight: 600;
             color: var(--primary);
             font-size: 14px;
         }
+
+        .footer {
+            margin-top: 40px;
+            padding: 20px;
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+        }
+
         @media print {
             body { background: white; }
-            .container { padding: 10px; }
-            .card { box-shadow: none; border: 1px solid #ddd; }
+            .filter-section { display: none; }
+            .kpi-card:hover { box-shadow: none; }
+        }
+
+        @media (max-width: 768px) {
+            .grid2 { grid-template-columns: 1fr; }
+            .kpi-section { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
@@ -341,72 +497,92 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="header">
             <div>
                 <h1>📊 Painel de Manutenção Predial</h1>
-                <div class="subtitle">SESI e SENAI — Gestão de Chamados de Manutenção</div>
+                <p>SESI e SENAI — Visão Geral de Chamados, Contratos e Indicadores</p>
             </div>
         </div>
 
-        <!-- KPIs -->
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <div class="kpi-label">Total de Chamados</div>
-                <div class="kpi-value" id="kpi-total">0</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Concluídos</div>
-                <div class="kpi-value" id="kpi-concluido">0</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Em Execução</div>
-                <div class="kpi-value" id="kpi-execucao">0</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Paralisados</div>
-                <div class="kpi-value" id="kpi-paralisado">0</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Abertos >30 dias</div>
-                <div class="kpi-value" id="kpi-30dias">0</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Valor Investido</div>
-                <div class="kpi-value" id="kpi-valor">R$ 0</div>
-            </div>
-        </div>
+        <!-- KPIs Gerais -->
+        <div class="kpi-section" id="kpis"></div>
 
-        <!-- Saldo em Contrato -->
-        <div class="grid-2col">
-            <div class="card">
+        <!-- Saldo em Contrato + Tempo em Aberto -->
+        <div class="grid2">
+            <div class="card" style="margin-bottom: 0;">
                 <div class="card-title">💰 Saldo em Contrato</div>
                 <div id="contracts"></div>
             </div>
-            <div class="card">
+
+            <div class="card" style="margin-bottom: 0;">
                 <div class="card-title">⏱️ Tempo Médio em Aberto</div>
                 <div id="tempoAberto"></div>
             </div>
         </div>
 
-        <!-- Status Geral -->
-        <div class="grid-2col">
-            <div class="card">
-                <div class="card-title">📈 Distribuição de Status</div>
-                <div class="chart-wrapper">
-                    <canvas id="statusChart"></canvas>
-                </div>
+        <!-- Distribuição de Status -->
+        <div class="card">
+            <div class="card-title">📈 Distribuição de Status</div>
+            <div class="chart-wrapper">
+                <canvas id="statusChart" role="img" aria-label="Distribuição de chamados por status"></canvas>
             </div>
+        </div>
+
+        <!-- Filtros Globais Interativos -->
+        <div class="card">
+            <div class="card-title">🔍 Filtros Interativos</div>
+            <div class="filter-section" id="filters"></div>
         </div>
 
         <!-- Chamados por Unidade -->
         <div class="card">
             <div class="card-title">🏢 Chamados por Unidade (com investimento)</div>
             <div class="chart-wrapper" style="height: 500px; margin-bottom: 20px;">
-                <canvas id="unitChart"></canvas>
+                <canvas id="unitChart" role="img" aria-label="Distribuição de chamados por unidade"></canvas>
             </div>
             <div id="unitLegendBottom"></div>
+        </div>
+
+        <!-- Tabela Completa de Chamados -->
+        <div class="card">
+            <div class="card-title">📋 Lista de Chamados</div>
+            
+            <div style="margin-bottom: 16px;">
+                <div style="font-weight: 600; font-size: 13px; color: #666; margin-bottom: 10px;">Filtrar por Status na Tabela</div>
+                <div class="filter-group" id="listStatusFilter"></div>
+            </div>
+
+            <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 220px;">
+                    <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #666;">🔍 Buscar por O.S.</label>
+                    <input type="text" class="filter-input" id="osSearch" placeholder="Ex: 194876" oninput="filterByOS(this.value)" />
+                </div>
+                <div style="font-size: 13px; color: #666;">
+                    Exibindo <strong id="ticketCount">0</strong> de <strong id="totalTickets">0</strong> chamados
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="ticketTable">
+                    <thead>
+                        <tr>
+                            <th>O.S</th>
+                            <th>NR</th>
+                            <th>Unidade</th>
+                            <th>Descrição</th>
+                            <th>Status</th>
+                            <th>Data Envio</th>
+                            <th>Dias Abertos</th>
+                            <th style="text-align: right;">Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Atualizado em <span id="updateTime"></span> | Painel Interativo de Gestão de Manutenção Predial</p>
         </div>
     </div>
 
     <script>
-        const DATA = __DATA_PLACEHOLDER__;
         const COLOR_MAP = {
             'CONCLUIDO': '#0ca30c',
             'EM EXECUÇÃO': '#3987e5',
@@ -419,48 +595,114 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             'SEM STATUS': '#999'
         };
 
+        const DATA = __DATA_PLACEHOLDER__;
+
+        let state = {
+            tickets: [],
+            filters: { status: [], unidade: [], os: '', listStatus: '' }
+        };
+
+        function init() {
+            state.tickets = DATA.chamados;
+            document.getElementById('updateTime').textContent = new Date().toLocaleString('pt-BR');
+            document.getElementById('totalTickets').textContent = state.tickets.length;
+            renderFilters();
+            renderListStatusFilter();
+            render();
+        }
+
+        function getFiltered() {
+            if (state.filters.os !== '') {
+                return state.tickets.filter(t => t.os.toString().includes(state.filters.os));
+            }
+            return state.tickets.filter(t => {
+                const matchStatus = state.filters.status.length === 0 || state.filters.status.includes(t.status);
+                const matchUnidade = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
+                const matchListStatus = state.filters.listStatus === '' || t.status === state.filters.listStatus;
+                return matchStatus && matchUnidade && matchListStatus;
+            });
+        }
+
         function renderKPIs() {
-            const totais = DATA.totais;
-            document.getElementById('kpi-total').textContent = totais.total_chamados;
-            document.getElementById('kpi-concluido').textContent = totais.concluido;
-            document.getElementById('kpi-execucao').textContent = totais.em_execucao;
-            document.getElementById('kpi-paralisado').textContent = totais.paralisado;
-            document.getElementById('kpi-30dias').textContent = totais.abertos_30dias;
-            const valorFormatado = new Intl.NumberFormat('pt-BR', {style: 'currency', currency: 'BRL'}).format(totais.valor_total);
-            document.getElementById('kpi-valor').textContent = valorFormatado;
+            const filtered = getFiltered();
+            const total = filtered.length;
+            const concluido = filtered.filter(t => t.status === 'CONCLUIDO').length;
+            const emExec = filtered.filter(t => t.status === 'EM EXECUÇÃO').length;
+            const paralisado = filtered.filter(t => t.status === 'PARALISADO').length;
+            const muitoAntigos = filtered.filter(t => t.dias_abertos !== null && t.dias_abertos > 30).length;
+            const valorTotal = filtered.reduce((s, t) => s + (t.valor || 0), 0);
+            const comOrcamento = filtered.filter(t => t.valor > 0).length;
+
+            const html = `
+                <div class="kpi-card">
+                    <div class="kpi-label">Total de Chamados</div>
+                    <div class="kpi-value">${total}</div>
+                    <div class="kpi-percent">Chamados filtrados</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Concluídos</div>
+                    <div class="kpi-value" style="color: var(--success);">${concluido}</div>
+                    <div class="kpi-percent">${total ? Math.round(concluido * 100 / total) : 0}% do total</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Em Execução</div>
+                    <div class="kpi-value" style="color: var(--primary);">${emExec}</div>
+                    <div class="kpi-percent">${total ? Math.round(emExec * 100 / total) : 0}% em andamento</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">⚠️ Paralisados</div>
+                    <div class="kpi-value" style="color: var(--danger);">${paralisado}</div>
+                    <div class="kpi-percent">Necessita atenção</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">🔴 Abertos > 30 dias</div>
+                    <div class="kpi-value" style="color: #e34948;">${muitoAntigos}</div>
+                    <div class="kpi-percent">Cobrar celeridade</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Valor Investido</div>
+                    <div class="kpi-value" style="font-size: 22px; color: var(--primary);">
+                        R$ ${(valorTotal / 1000).toFixed(1)}K
+                    </div>
+                    <div class="kpi-percent">${comOrcamento} chamados orçados</div>
+                </div>
+            `;
+            document.getElementById('kpis').innerHTML = html;
         }
 
         function renderContracts() {
             const contracts = DATA.contracts;
             let html = '';
-            for (const [key, data] of Object.entries(contracts)) {
-                const pct = Math.round(data.saldo * 100 / data.contrato);
+            for (const [key, cData] of Object.entries(contracts)) {
                 const name = key === 'sesi' ? 'SESI' : 'SENAI';
-                const utilizado = data.contrato - data.saldo;
-                const utilizadoPct = 100 - pct;
+                const utilizado = cData.utilizado;
+                const saldo = cData.saldo;
+                const contrato = cData.contrato;
+                const pctUtilizado = contrato > 0 ? Math.min(100, Math.round((utilizado * 100) / contrato)) : 0;
+
                 html += `
                     <div style="margin-bottom: 24px;">
-                        <h3 style="font-size: 14px; margin-bottom: 12px; color: #3987e5; font-weight: 600; text-transform: uppercase;">${name}</h3>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px;">
-                            <span style="color: #666;">Valor do Contrato</span>
-                            <span style="font-weight: 600; color: #3987e5;">R$ ${new Intl.NumberFormat('pt-BR').format(data.contrato)}</span>
+                        <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--primary); font-weight: 600; text-transform: uppercase;">${name}</h3>
+                        <div class="contract-stat">
+                            <span class="contract-label">Valor do Contrato</span>
+                            <span class="contract-value">R$ ${new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2}).format(contrato)}</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px;">
-                            <span style="color: #666;">Utilizado</span>
-                            <span style="font-weight: 600; color: #3987e5;">R$ ${new Intl.NumberFormat('pt-BR').format(utilizado)}</span>
+                        <div class="contract-stat">
+                            <span class="contract-label">Utilizado</span>
+                            <span class="contract-value">R$ ${new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2}).format(utilizado)}</span>
                         </div>
-                        <div style="margin: 16px 0;">
-                            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px; color: #666;">
+                        <div class="progress-container">
+                            <div class="progress-label">
                                 <span>Progresso</span>
-                                <span>${utilizadoPct}% utilizado</span>
+                                <span>${pctUtilizado}% utilizado</span>
                             </div>
-                            <div style="width: 100%; height: 24px; background: #e0e0e0; border-radius: 12px; overflow: hidden;">
-                                <div style="height: 100%; width: ${utilizadoPct}%; background: linear-gradient(90deg, #0ca30c, #1baf7a); transition: width 0.3s;"></div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${pctUtilizado}%"></div>
                             </div>
                         </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0; font-size: 14px;">
-                            <span style="color: #666;">Saldo Disponível</span>
-                            <span style="font-weight: 600; color: #1baf7a;">R$ ${new Intl.NumberFormat('pt-BR').format(data.saldo)}</span>
+                        <div class="contract-stat" style="margin-bottom: 0;">
+                            <span class="contract-label">Saldo Disponível</span>
+                            <span class="contract-value" style="color: var(--info);">R$ ${new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2}).format(saldo)}</span>
                         </div>
                     </div>
                 `;
@@ -469,48 +711,121 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function renderTempoAberto() {
-            const abertos = DATA.chamados.filter(t => t.status !== 'CONCLUIDO' && t.dias_abertos !== null);
+            const filtered = getFiltered();
+            const abertos = filtered.filter(t => t.status !== 'CONCLUIDO' && t.dias_abertos !== null);
+
             if (abertos.length === 0) {
-                document.getElementById('tempoAberto').innerHTML = '<p style="color: #999;">Nenhum chamado aberto</p>';
+                document.getElementById('tempoAberto').innerHTML = '<p style="color: #999; text-align: center; padding: 40px 0;">Nenhum chamado aberto nos filtros atuais</p>';
                 return;
             }
-            const mediaDias = Math.round(abertos.reduce((s, t) => s + (t.dias_abertos || 0), 0) / abertos.length);
+
+            const mediaDias = Math.round(abertos.reduce((s, t) => s + t.dias_abertos, 0) / abertos.length);
             const range030 = abertos.filter(t => t.dias_abertos <= 30).length;
             const range3060 = abertos.filter(t => t.dias_abertos > 30 && t.dias_abertos <= 60).length;
             const range60plus = abertos.filter(t => t.dias_abertos > 60).length;
+
             const html = `
                 <div style="text-align: center; margin-bottom: 24px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
                     <div style="font-size: 12px; color: #666; margin-bottom: 8px; text-transform: uppercase;">Média de Dias em Aberto</div>
-                    <div style="font-size: 48px; font-weight: bold; color: #3987e5; margin-bottom: 4px;">${mediaDias}</div>
+                    <div style="font-size: 48px; font-weight: bold; color: var(--primary); margin-bottom: 4px;">${mediaDias}</div>
                     <div style="font-size: 13px; color: #999;">dias (em ${abertos.length} chamados abertos)</div>
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px;">
-                    <div style="background: #d4edda; border-radius: 8px; padding: 16px; text-align: center; border-left: 4px solid #0ca30c;">
-                        <div style="font-size: 28px; font-weight: bold; color: #155724;">${range030}</div>
-                        <div style="font-size: 12px; color: #155724; margin-top: 8px; font-weight: 600;">0-30 dias</div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                    <div style="background: #d4edda; border-radius: 8px; padding: 14px; text-align: center; border-left: 4px solid #0ca30c;">
+                        <div style="font-size: 26px; font-weight: bold; color: #155724;">${range030}</div>
+                        <div style="font-size: 12px; color: #155724; font-weight: 600; margin-top: 4px;">0-30 dias</div>
+                        <div style="font-size: 11px; color: #666; margin-top: 2px;">${Math.round(range030 * 100 / abertos.length)}%</div>
                     </div>
-                    <div style="background: #fff3cd; border-radius: 8px; padding: 16px; text-align: center; border-left: 4px solid #fab219;">
-                        <div style="font-size: 28px; font-weight: bold; color: #856404;">${range3060}</div>
-                        <div style="font-size: 12px; color: #856404; margin-top: 8px; font-weight: 600;">30-60 dias</div>
+                    <div style="background: #fff3cd; border-radius: 8px; padding: 14px; text-align: center; border-left: 4px solid #fab219;">
+                        <div style="font-size: 26px; font-weight: bold; color: #856404;">${range3060}</div>
+                        <div style="font-size: 12px; color: #856404; font-weight: 600; margin-top: 4px;">30-60 dias</div>
+                        <div style="font-size: 11px; color: #666; margin-top: 2px;">${Math.round(range3060 * 100 / abertos.length)}%</div>
                     </div>
-                    <div style="background: #f8d7da; border-radius: 8px; padding: 16px; text-align: center; border-left: 4px solid #e34948;">
-                        <div style="font-size: 28px; font-weight: bold; color: #721c24;">${range60plus}</div>
-                        <div style="font-size: 12px; color: #721c24; margin-top: 8px; font-weight: 600;">>60 dias</div>
+                    <div style="background: #f8d7da; border-radius: 8px; padding: 14px; text-align: center; border-left: 4px solid #e34948;">
+                        <div style="font-size: 26px; font-weight: bold; color: #721c24;">${range60plus}</div>
+                        <div style="font-size: 12px; color: #721c24; font-weight: 600; margin-top: 4px;">>60 dias</div>
+                        <div style="font-size: 11px; color: #666; margin-top: 2px;">${Math.round(range60plus * 100 / abertos.length)}%</div>
                     </div>
                 </div>
             `;
             document.getElementById('tempoAberto').innerHTML = html;
         }
 
+        function renderFilters() {
+            const statuses = [...new Set(state.tickets.map(t => t.status))].sort();
+            const unidades = [...new Set(state.tickets.map(t => t.unidade))].sort();
+
+            let html = `
+                <div class="filter-group">
+                    <span class="filter-label">Status (clique para alternar)</span>
+                    ${statuses.map(s => `
+                        <span class="filter-chip ${state.filters.status.includes(s) ? 'active' : ''}" onclick="toggleFilter('status', '${s}')">
+                            ${s}
+                        </span>
+                    `).join('')}
+                </div>
+                <div class="filter-group" style="margin-top: 10px;">
+                    <span class="filter-label">Unidade (clique para alternar)</span>
+                    ${unidades.map(u => `
+                        <span class="filter-chip ${state.filters.unidade.includes(u) ? 'active' : ''}" onclick="toggleFilter('unidade', '${u}')">
+                            ${u}
+                        </span>
+                    `).join('')}
+                </div>
+            `;
+            document.getElementById('filters').innerHTML = html;
+        }
+
+        function toggleFilter(type, value) {
+            if (state.filters[type].includes(value)) {
+                state.filters[type] = state.filters[type].filter(v => v !== value);
+            } else {
+                state.filters[type].push(value);
+            }
+            renderFilters();
+            render();
+        }
+
+        function filterByOS(value) {
+            state.filters.os = value.trim();
+            render();
+        }
+
+        function toggleListStatus(status) {
+            state.filters.listStatus = (state.filters.listStatus === status) ? '' : status;
+            renderListStatusFilter();
+            render();
+        }
+
+        function renderListStatusFilter() {
+            const statuses = [...new Set(state.tickets.map(t => t.status))].sort();
+            let html = `
+                <span class="filter-chip ${state.filters.listStatus === '' ? 'active' : ''}" onclick="toggleListStatus('')">
+                    Todos
+                </span>
+            `;
+            statuses.forEach(s => {
+                const isActive = state.filters.listStatus === s;
+                html += `
+                    <span class="filter-chip ${isActive ? 'active' : ''}" onclick="toggleListStatus('${s}')">
+                        ${s}
+                    </span>
+                `;
+            });
+            document.getElementById('listStatusFilter').innerHTML = html;
+        }
+
         function renderCharts() {
-            // Status Chart
+            const filtered = getFiltered();
+
+            // Status Doughnut Chart
             const statusCounts = {};
-            DATA.chamados.forEach(t => {
+            filtered.forEach(t => {
                 statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
             });
             const statusLabels = Object.keys(statusCounts).sort();
             const statusValues = statusLabels.map(s => statusCounts[s]);
-            const statusColors = statusLabels.map(s => COLOR_MAP[s]);
+            const statusColors = statusLabels.map(s => COLOR_MAP[s] || '#999');
 
             if (window.statusChartInstance) window.statusChartInstance.destroy();
             window.statusChartInstance = new Chart(document.getElementById('statusChart'), {
@@ -527,13 +842,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom' } }
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
                 }
             });
 
-            // Unit Chart
+            // Unit Bar Chart (empilhado)
             const unitData = {};
-            DATA.chamados.forEach(t => {
+            filtered.forEach(t => {
                 if (!unitData[t.unidade]) {
                     unitData[t.unidade] = { status: {}, valor: 0 };
                 }
@@ -549,11 +866,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 })
                 .map(e => e[0]);
 
-            const allStatuses = [...new Set(DATA.chamados.map(t => t.status))].sort();
+            const allStatuses = [...new Set(filtered.map(t => t.status))].sort();
             const datasets = allStatuses.map(status => ({
                 label: status,
                 data: unitLabels.map(unit => unitData[unit].status[status] || 0),
-                backgroundColor: COLOR_MAP[status],
+                backgroundColor: COLOR_MAP[status] || '#999',
                 borderColor: '#fff',
                 borderWidth: 1
             }));
@@ -574,39 +891,39 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             });
 
-            renderUnitTable(unitData, unitLabels, allStatuses);
+            renderUnitCards(unitData, unitLabels, allStatuses);
         }
 
-        function renderUnitTable(unitData, unitLabels, allStatuses) {
-            let legendaHTML = '<div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; justify-content: center;">';
+        function renderUnitCards(unitData, unitLabels, allStatuses) {
+            let legendaHTML = '<div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; justify-content: center;">';
             allStatuses.forEach(status => {
-                const color = COLOR_MAP[status];
+                const color = COLOR_MAP[status] || '#999';
                 legendaHTML += `
                     <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
-                        <div style="width: 20px; height: 20px; background: ${color}; border-radius: 2px;"></div>
+                        <div style="width: 16px; height: 16px; background: ${color}; border-radius: 2px;"></div>
                         <span>${status}</span>
                     </div>
                 `;
             });
             legendaHTML += '</div>';
 
-            let cardsHTML = legendaHTML + '<div class="unit-cards">';
+            let cardsHTML = legendaHTML + '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">';
             unitLabels.forEach(unit => {
                 const total = Object.values(unitData[unit].status).reduce((s, v) => s + v, 0);
                 const valor = unitData[unit].valor;
-                const valorFormatado = new Intl.NumberFormat('pt-BR', {style: 'currency', currency: 'BRL'}).format(valor).replace('R$', '').trim();
+                const valorFmt = new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(valor);
 
                 cardsHTML += `
                     <div class="unit-card">
                         <div class="unit-card-name">${unit}</div>
                         <div class="unit-card-info">
-                            <div class="unit-card-left">
+                            <div>
                                 <div class="unit-card-label">Chamados</div>
                                 <div class="unit-card-value">${total}</div>
                             </div>
-                            <div class="unit-card-right">
+                            <div style="text-align: right;">
                                 <div class="unit-card-label">Investido</div>
-                                <div class="unit-card-value-right">R$ ${valorFormatado}</div>
+                                <div class="unit-card-value-right">R$ ${valorFmt}</div>
                             </div>
                         </div>
                     </div>
@@ -616,39 +933,85 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('unitLegendBottom').innerHTML = cardsHTML;
         }
 
+        function renderTable() {
+            const filtered = getFiltered();
+            document.getElementById('ticketCount').textContent = filtered.length;
+
+            let html = filtered
+                .sort((a, b) => {
+                    if (a.status === 'CONCLUIDO' && b.status !== 'CONCLUIDO') return 1;
+                    if (a.status !== 'CONCLUIDO' && b.status === 'CONCLUIDO') return -1;
+                    if (a.dias_abertos !== null && b.dias_abertos !== null) {
+                        return b.dias_abertos - a.dias_abertos;
+                    }
+                    return a.unidade.localeCompare(b.unidade) || a.os - b.os;
+                })
+                .map(t => {
+                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                    let diasHTML = '';
+                    if (t.dias_abertos !== null) {
+                        let cor = '#0ca30c';
+                        let fundo = '#d4edda';
+                        if (t.dias_abertos > 60) {
+                            cor = '#e34948';
+                            fundo = '#f8d7da';
+                        } else if (t.dias_abertos > 30) {
+                            cor = '#fab219';
+                            fundo = '#fff3cd';
+                        }
+                        diasHTML = `<td style="font-weight: 600; color: ${cor}; background: ${fundo}; border-radius: 4px; padding: 6px 10px; text-align: center;">${t.dias_abertos}d</td>`;
+                    } else {
+                        diasHTML = `<td style="text-align: center; color: #999;">-</td>`;
+                    }
+
+                    const valorFmt = new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(t.valor);
+
+                    return `
+                        <tr>
+                            <td style="font-weight: 600;">#${t.os}</td>
+                            <td>${t.nr}</td>
+                            <td>${t.unidade}</td>
+                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
+                            <td>${t.data_envio || '-'}</td>
+                            ${diasHTML}
+                            <td style="text-align: right; font-weight: 600;">R$ ${valorFmt}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+            document.getElementById('tableBody').innerHTML = html;
+        }
+
         function render() {
             renderKPIs();
             renderContracts();
             renderTempoAberto();
             renderCharts();
+            renderTable();
         }
 
-        render();
+        init();
     </script>
 </body>
 </html>"""
 
-# ============== RENDERIZAR DASHBOARD ==============
 st.subheader("📊 Dashboard Interativo")
 
-# Gerar HTML
 html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
 
-# Mostrar em iframe
-st.components.v1.html(html_content, height=3000, scrolling=True)
+st.components.v1.html(html_content, height=3600, scrolling=True)
 
-# ============== DOWNLOADS ==============
 st.subheader("📥 Download dos Arquivos")
 col1, col2 = st.columns(2)
 
 with col1:
-    # Download HTML
     st.download_button(
-        label="📄 Download HTML",
+        label="📄 Download HTML Completo",
         data=html_content,
         file_name=f"painel_manutencao_{datetime.now().strftime('%Y%m%d')}.html",
         mime="text/html"
     )
 
 with col2:
-    st.info("✅ Dashboard gerado com sucesso! Use os botões acima para fazer download.")
+    st.info("✅ Dashboard gerado com sucesso com todos os painéis, filtros e tabela de chamados!")
