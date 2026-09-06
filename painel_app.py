@@ -628,28 +628,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </body>
 </html>"""
 
-        # ============== RENDERIZAR DASHBOARD ==============
-        st.subheader("📊Dashboard Interativo")
-        
-        # Gerar HTML
-        html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
-        
-        # Mostrar em iframe
-        st.components.v1.html(html_content, height=3000, scrolling=True)
-        
-        # ============== DOWNLOADS ==============
-        st.subheader("📥 Download dos Arquivos")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Download HTML
-            st.download_button(
-                label="📄 Download HTML",
-                data=html_content,
-                file_name=f"painel_manutencao_{datetime.now().strftime('%Y%m%d')}.html",
-                mime="text/html"
-            )
-        
-        with col2:
-            st.info("✅ Dashboard gerado com sucesso! Use os botões acima para fazer download.")
-            "Atualizar app com nova estrutura de dashboard"
+# ============== RENDERIZAR DASHBOARD ==============
+st.subheader("📊 Dashboard Interativo")
+
+# Gerar HTML
+html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
+
+# Mostrar em iframe
+st.components.v1.html(html_content, height=3000, scrolling=True)
+
+# ============== DOWNLOADS ==============
+st.subheader("📥 Download dos Arquivos")
+col1, col2 = st.columns(2)
+
+with col1:
+    # Download HTML
+    st.download_button(
+        label="📄 Download HTML",
+        data=html_content,
+        file_name=f"painel_manutencao_{datetime.now().strftime('%Y%m%d')}.html",
+        mime="text/html"
+    )
+
+with col2:
+    st.info("✅ Dashboard gerado com sucesso! Use os botões acima para fazer download.")
