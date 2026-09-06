@@ -131,10 +131,14 @@ for _, row in df_os.iterrows():
     if desc_val.lower() == 'nan':
         desc_val = '-'
 
+    unidade_str = str(row['UNIDADE'])
+    casa = 'SESI' if 'SESI' in unidade_str.upper() else ('SENAI' if 'SENAI' in unidade_str.upper() else 'OUTROS')
+
     data['chamados'].append({
         'nr': int(row['NR']),
         'os': int(row['O.S']),
-        'unidade': str(row['UNIDADE']),
+        'unidade': unidade_str,
+        'casa': casa,
         'status': status,
         'descricao': desc_val,
         'valor': round(valor, 2),
@@ -647,7 +651,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         💳 Controle de Pagamentos & Liberação para NFE
                     </h2>
                     <p style="font-size: 13px; color: #666; margin-top: 4px;">
-                        Valide os serviços concluídos por mês de referência para autorizar a empresa a emitir a Nota Fiscal
+                        Valide os serviços concluídos por mês e CNPJ (SESI/SENAI) para autorizar a empresa a emitir a Nota Fiscal
                     </p>
                 </div>
                 <div class="payment-badge-status" id="paySummaryBadge">
@@ -679,8 +683,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Filtro de Mês de Emissão / Competência -->
+            <!-- Filtro de Entidade / CNPJ, Mês de Emissão e Status -->
             <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
+                <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
+                    🏛️ Filtrar por Entidade / CNPJ de Faturamento (Casa):
+                </div>
+                <div class="filter-group" id="payCasaFilters" style="margin-bottom: 14px;"></div>
+
                 <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
                     📅 Filtrar por Mês de Emissão / Competência da Nota:
                 </div>
@@ -699,6 +708,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <tr style="background: #e9ecef;">
                             <th>O.S</th>
                             <th>NR</th>
+                            <th>Entidade / CNPJ</th>
                             <th>Unidade</th>
                             <th>Descrição</th>
                             <th>Mês Competência</th>
@@ -772,7 +782,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         let state = {
             tickets: [],
             filters: { status: [], unidade: [], os: '', listStatus: '' },
-            payFilters: { mes: '', statusPagamento: '' }
+            payFilters: { mes: '', statusPagamento: '', casa: '' }
         };
 
         function init() {
@@ -781,6 +791,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('totalTickets').textContent = state.tickets.length;
             renderFilters();
             renderListStatusFilter();
+            renderPaymentCasaFilters();
             renderPaymentMonthFilters();
             render();
         }
@@ -794,6 +805,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const matchUnidade = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
                 const matchListStatus = state.filters.listStatus === '' || t.status === state.filters.listStatus;
                 return matchStatus && matchUnidade && matchListStatus;
+            });
+        }
+
+        function getPayFiltered() {
+            return state.tickets.filter(t => {
+                const matchUnidade = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
+                const matchCasa = state.payFilters.casa === '' || t.casa === state.payFilters.casa;
+                const matchMes = state.payFilters.mes === '' || t.mes_emissao === state.payFilters.mes;
+                const matchPayStatus = state.payFilters.statusPagamento === '' || t.status_pagamento === state.payFilters.statusPagamento;
+                return matchUnidade && matchCasa && matchMes && matchPayStatus;
             });
         }
 
@@ -959,6 +980,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('filters').innerHTML = html;
         }
 
+        function renderPaymentCasaFilters() {
+            const opcoes = [
+                { id: '', label: '🏢 Todas as Entidades (SESI + SENAI)' },
+                { id: 'SESI', label: '🔵 SESI (CNPJ SESI)' },
+                { id: 'SENAI', label: '🟠 SENAI (CNPJ SENAI)' }
+            ];
+
+            let html = '';
+            opcoes.forEach(op => {
+                const isActive = state.payFilters.casa === op.id;
+                html += `
+                    <span class="filter-chip filter-chip-pay ${isActive ? 'active' : ''}" onclick="setPayCasa('${op.id}')">
+                        ${op.label}
+                    </span>
+                `;
+            });
+            document.getElementById('payCasaFilters').innerHTML = html;
+        }
+
+        function setPayCasa(casa) {
+            state.payFilters.casa = casa;
+            renderPaymentCasaFilters();
+            renderPaymentPanel();
+        }
+
         function renderPaymentMonthFilters() {
             const mesesValidos = [...new Set(state.tickets.map(t => t.mes_emissao))].filter(m => m && m !== 'Não Definido').sort();
             
@@ -1032,8 +1078,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('payValTotal').textContent = `R$ ${fmt(valTotal)}`;
             document.getElementById('payCountTotal').textContent = `${payList.length} chamados filtrados`;
 
-            const mesTxt = state.payFilters.mes ? `Competência: ${state.payFilters.mes}` : 'Visão Geral (Todos os Meses)';
-            document.getElementById('paySummaryBadge').textContent = `Faturamento: R$ ${fmt(valLiberado)} (${mesTxt})`;
+            const casaTxt = state.payFilters.casa ? ` [${state.payFilters.casa}]` : ' [SESI + SENAI]';
+            const mesTxt = state.payFilters.mes ? `Competência: ${state.payFilters.mes}` : 'Todos os Meses';
+            document.getElementById('paySummaryBadge').textContent = `Faturamento: R$ ${fmt(valLiberado)}${casaTxt} (${mesTxt})`;
 
             let rowsHTML = payList
                 .sort((a, b) => {
@@ -1057,11 +1104,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     }
 
                     const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                    const casaBadgeColor = t.casa === 'SESI' ? '#0d6efd' : (t.casa === 'SENAI' ? '#e65100' : '#6c757d');
+                    const casaBadgeBg = t.casa === 'SESI' ? '#e7f3ff' : (t.casa === 'SENAI' ? '#fff3e0' : '#f8f9fa');
 
                     return `
                         <tr>
                             <td style="font-weight: 700; color: #0d6efd;">#${t.os}</td>
                             <td>${t.nr}</td>
+                            <td>
+                                <span style="display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${casaBadgeBg}; color: ${casaBadgeColor}; border: 1px solid ${casaBadgeColor}40;">
+                                    ${t.casa}
+                                </span>
+                            </td>
                             <td><strong>${t.unidade}</strong></td>
                             <td style="max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
                             <td><span style="font-size: 12px; font-weight: 600; color: #495057;">${t.mes_emissao}</span></td>
@@ -1075,7 +1129,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }).join('');
 
             if (payList.length === 0) {
-                rowsHTML = '<tr><td colspan="8" style="text-align:center; padding: 24px; color: #999;">Nenhum chamado de pagamento localizado para este filtro.</td></tr>';
+                rowsHTML = '<tr><td colspan="9" style="text-align:center; padding: 24px; color: #999;">Nenhum chamado de pagamento localizado para este filtro.</td></tr>';
             }
 
             document.getElementById('payTableBody').innerHTML = rowsHTML;
