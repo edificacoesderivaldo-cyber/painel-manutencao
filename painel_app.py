@@ -516,44 +516,103 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .status-aguardando-aprovação, .status-aguardando-aprovacao { background: #ffe5d0; color: #a04000; }
         .status-sem-status { background: #e9ecef; color: #495057; }
 
-        /* Badges de Pagamento / NFE */
-        .pay-badge-liberado {
-            background: #d1e7dd;
-            color: #0f5132;
-            border: 1px solid #badbcc;
+        .units-split-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 900px) {
+            .units-split-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .units-column {
+            background: #ffffff;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            padding: 16px;
+        }
+
+        .units-column-sesi {
+            border-top: 4px solid #0d6efd;
+            background: #fbfdff;
+        }
+
+        .units-column-senai {
+            border-top: 4px solid #e65100;
+            background: #fffbf9;
+        }
+
+        .units-column-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 12px;
+            margin-bottom: 14px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .units-column-title {
+            font-size: 16px;
             font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        .pay-badge-medicao {
-            background: #cff4fc;
-            color: #055160;
-            border: 1px solid #b6effb;
+
+        .units-column-title.sesi { color: #0d6efd; }
+        .units-column-title.senai { color: #e65100; }
+
+        .units-column-subtotal {
+            font-size: 12px;
             font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 20px;
         }
-        .pay-badge-bloqueado {
-            background: #f8d7da;
-            color: #842029;
-            border: 1px solid #f5c2c7;
-            font-weight: 600;
+
+        .units-column-subtotal.sesi {
+            background: #e7f3ff;
+            color: #0a58ca;
         }
-        .pay-badge-pendente {
-            background: #fff3cd;
-            color: #664d03;
-            border: 1px solid #ffecb5;
+
+        .units-column-subtotal.senai {
+            background: #fff0e6;
+            color: #c44000;
         }
 
         .unit-card {
-            padding: 16px;
+            padding: 14px 16px;
             background: white;
             border: 1px solid var(--border);
             border-radius: 8px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .unit-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+
+        .unit-card-sesi {
+            border-left: 4px solid #0d6efd;
+        }
+
+        .unit-card-senai {
+            border-left: 4px solid #e65100;
         }
 
         .unit-card-name {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 12px;
-            font-size: 14px;
+            font-weight: 700;
+            color: #212529;
+            margin-bottom: 10px;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .unit-card-info {
@@ -563,22 +622,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .unit-card-label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 4px;
+            font-size: 11px;
+            color: #6c757d;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            font-weight: 600;
         }
 
         .unit-card-value {
-            font-weight: 600;
-            color: #333;
-            font-size: 16px;
+            font-weight: 700;
+            color: #212529;
+            font-size: 18px;
+            line-height: 1;
         }
 
         .unit-card-value-right {
-            font-weight: 600;
-            color: var(--primary);
+            font-weight: 700;
             font-size: 14px;
         }
+
+        .unit-card-value-right.sesi { color: #0d6efd; }
+        .unit-card-value-right.senai { color: #e65100; }
 
         .footer {
             margin-top: 40px;
@@ -1473,10 +1537,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             });
 
-            renderUnitCards(unitData, unitLabels, allStatuses);
+            renderUnitCards(unitData, allStatuses);
         }
 
-        function renderUnitCards(unitData, unitLabels, allStatuses) {
+        function renderUnitCards(unitData, allStatuses) {
             let legendaHTML = '<div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; justify-content: center;">';
             allStatuses.forEach(status => {
                 const color = COLOR_MAP[status] || '#999';
@@ -1489,15 +1553,49 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             });
             legendaHTML += '</div>';
 
-            let cardsHTML = legendaHTML + '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">';
-            unitLabels.forEach(unit => {
+            // Separar unidades por SESI e SENAI e ordenar ALFABETICAMENTE de A a Z
+            const todasUnidades = Object.keys(unitData);
+            const unidadesSesi = todasUnidades
+                .filter(u => u.toUpperCase().includes('SESI'))
+                .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+            const unidadesSenai = todasUnidades
+                .filter(u => u.toUpperCase().includes('SENAI'))
+                .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+            const unidadesOutras = todasUnidades
+                .filter(u => !u.toUpperCase().includes('SESI') && !u.toUpperCase().includes('SENAI'))
+                .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+            // Se houver unidades genéricas, distribuir proporcionalmente ou adicionar ao SESI
+            if (unidadesOutras.length > 0) {
+                unidadesSesi.push(...unidadesOutras);
+            }
+
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+
+            // Calcular totais de SESI e SENAI para os cabeçalhos das colunas
+            let totalChamadosSesi = 0;
+            let totalInvestidoSesi = 0;
+            unidadesSesi.forEach(u => {
+                totalChamadosSesi += Object.values(unitData[u].status).reduce((s, v) => s + v, 0);
+                totalInvestidoSesi += unitData[u].valor;
+            });
+
+            let totalChamadosSenai = 0;
+            let totalInvestidoSenai = 0;
+            unidadesSenai.forEach(u => {
+                totalChamadosSenai += Object.values(unitData[u].status).reduce((s, v) => s + v, 0);
+                totalInvestidoSenai += unitData[u].valor;
+            });
+
+            // Gerador de cards individuais
+            const buildCard = (unit, casaClass) => {
                 const total = Object.values(unitData[unit].status).reduce((s, v) => s + v, 0);
                 const valor = unitData[unit].valor;
-                const valorFmt = new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(valor);
-
-                cardsHTML += `
-                    <div class="unit-card">
-                        <div class="unit-card-name">${unit}</div>
+                return `
+                    <div class="unit-card unit-card-${casaClass}">
+                        <div class="unit-card-name" title="${unit}">${unit}</div>
                         <div class="unit-card-info">
                             <div>
                                 <div class="unit-card-label">Chamados</div>
@@ -1505,14 +1603,56 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             </div>
                             <div style="text-align: right;">
                                 <div class="unit-card-label">Investido</div>
-                                <div class="unit-card-value-right">R$ ${valorFmt}</div>
+                                <div class="unit-card-value-right ${casaClass}">R$ ${fmt(valor)}</div>
                             </div>
                         </div>
                     </div>
                 `;
-            });
-            cardsHTML += '</div>';
-            document.getElementById('unitLegendBottom').innerHTML = cardsHTML;
+            };
+
+            const cardsSesiHTML = unidadesSesi.length > 0 
+                ? unidadesSesi.map(u => buildCard(u, 'sesi')).join('')
+                : '<p style="color: #999; font-size: 13px; text-align: center; padding: 20px;">Nenhuma unidade SESI localizada.</p>';
+
+            const cardsSenaiHTML = unidadesSenai.length > 0 
+                ? unidadesSenai.map(u => buildCard(u, 'senai')).join('')
+                : '<p style="color: #999; font-size: 13px; text-align: center; padding: 20px;">Nenhuma unidade SENAI localizada.</p>';
+
+            let layoutHTML = legendaHTML + `
+                <div class="units-split-container">
+                    <!-- Coluna SESI (Esquerda / Azul) -->
+                    <div class="units-column units-column-sesi">
+                        <div class="units-column-header">
+                            <div class="units-column-title sesi">
+                                🔵 UNIDADES SESI
+                            </div>
+                            <div class="units-column-subtotal sesi">
+                                ${totalChamadosSesi} chamados &nbsp;|&nbsp; R$ ${fmt(totalInvestidoSesi)}
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px;">
+                            ${cardsSesiHTML}
+                        </div>
+                    </div>
+
+                    <!-- Coluna SENAI (Direita / Laranja) -->
+                    <div class="units-column units-column-senai">
+                        <div class="units-column-header">
+                            <div class="units-column-title senai">
+                                🟠 UNIDADES SENAI
+                            </div>
+                            <div class="units-column-subtotal senai">
+                                ${totalChamadosSenai} chamados &nbsp;|&nbsp; R$ ${fmt(totalInvestidoSenai)}
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px;">
+                            ${cardsSenaiHTML}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('unitLegendBottom').innerHTML = layoutHTML;
         }
 
         function renderTable() {
