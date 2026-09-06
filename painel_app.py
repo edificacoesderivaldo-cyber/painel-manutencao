@@ -588,6 +588,63 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-size: 12px;
         }
 
+        .btn-action-copy {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 16px;
+            background: #0d6efd;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(13, 110, 253, 0.2);
+        }
+
+        .btn-action-copy:hover {
+            background: #0b5ed7;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(13, 110, 253, 0.3);
+        }
+
+        .btn-action-copy:active {
+            transform: translateY(0);
+        }
+
+        .btn-action-secondary {
+            background: #ffffff;
+            color: #0d6efd;
+            border: 1px solid #0d6efd;
+            box-shadow: none;
+        }
+
+        .btn-action-secondary:hover {
+            background: #f0f7ff;
+            color: #0a58ca;
+        }
+
+        .copy-toast {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #d1e7dd;
+            color: #0f5132;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid #badbcc;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .copy-toast.show {
+            opacity: 1;
+        }
+
         @media print {
             body { background: white; }
             .filter-section { display: none; }
@@ -736,6 +793,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
                 <div id="paySummaryFooterVal" style="font-size: 18px; font-weight: 800; color: #0ca30c;">
                     R$ 0,00
+                </div>
+            </div>
+
+            <div style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                    <button class="btn-action-copy" onclick="copiarTabelaEmail()" title="Copia a tabela estruturada com formatação para colar diretamente no Gmail, Outlook ou Excel">
+                        📋 Copiar Tabela p/ E-mail
+                    </button>
+                    <button class="btn-action-copy btn-action-secondary" onclick="copiarMensagemAutorizacao()" title="Copia o texto formatado com o parecer formal autorizando a empresa a emitir a Nota Fiscal">
+                        ✉️ Copiar Texto de Autorização (E-mail Pronto)
+                    </button>
+                </div>
+                <div id="copyToast" class="copy-toast">
+                    ✅ Tabela copiada! Pressione Ctrl + V no seu e-mail.
                 </div>
             </div>
         </div>
@@ -1168,6 +1239,163 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('paySummaryFooterVal').innerHTML = `
                 Total Faturamento Liberado: R$ ${fmt(valLiberado)}
             `;
+        }
+
+        function showCopyToast(msg) {
+            const toast = document.getElementById('copyToast');
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 4000);
+        }
+
+        function copiarTabelaEmail() {
+            const payList = getPayFiltered();
+            if (payList.length === 0) {
+                alert('Nenhum chamado listado com os filtros atuais.');
+                return;
+            }
+
+            const liberados = payList.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
+            const valLiberado = liberados.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const valTotal = payList.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+
+            const casaTxt = state.payFilters.casa ? state.payFilters.casa : 'SESI / SENAI';
+            const mesTxt = state.payFilters.mes ? state.payFilters.mes : 'Todos os Meses';
+
+            // Montar HTML estilizado inline para colar perfeito no Outlook e Gmail
+            let html = `
+                <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.5;">
+                    <p style="font-size: 14px; margin-bottom: 8px;">
+                        Prezados,<br><br>
+                        Segue a relação de serviços autorizados para emissão de <strong>Nota Fiscal Eletrônica (NF-e)</strong> referente à medição:
+                    </p>
+                    <p style="font-size: 13px; color: #555555; margin-bottom: 14px;">
+                        • <strong>Entidade / CNPJ:</strong> ${casaTxt}<br>
+                        • <strong>Mês de Competência:</strong> ${mesTxt}<br>
+                        • <strong>Quantidade de O.S. Liberadas:</strong> ${liberados.length}<br>
+                        • <strong>Valor Total Liberado para NF-e:</strong> <span style="color: #0ca30c; font-weight: bold;">R$ ${fmt(valLiberado)}</span>
+                    </p>
+                    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #cccccc; font-family: Arial, sans-serif;">
+                        <thead>
+                            <tr style="background-color: #0d6efd; color: #ffffff; text-align: left;">
+                                <th style="padding: 8px; border: 1px solid #b8daff;">O.S</th>
+                                <th style="padding: 8px; border: 1px solid #b8daff;">NR</th>
+                                <th style="padding: 8px; border: 1px solid #b8daff;">Casa</th>
+                                <th style="padding: 8px; border: 1px solid #b8daff;">Unidade</th>
+                                <th style="padding: 8px; border: 1px solid #b8daff;">Descrição do Serviço</th>
+                                <th style="padding: 8px; border: 1px solid #b8daff;">Competência</th>
+                                <th style="padding: 8px; border: 1px solid #b8daff;">Status Liberação</th>
+                                <th style="padding: 8px; border: 1px solid #b8daff; text-align: right;">Valor (R$)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            let plain = `RELAÇÃO DE PAGAMENTOS / LIBERAÇÃO DE NFE\nEntidade: ${casaTxt} | Competência: ${mesTxt}\n\n`;
+            plain += `O.S\tNR\tCasa\tUnidade\tDescrição\tCompetência\tStatus\tValor\n`;
+
+            payList.forEach((t, i) => {
+                const bg = i % 2 === 0 ? '#ffffff' : '#f8f9fa';
+                const statusCor = t.status_pagamento === 'LIBERADO P/ NFE' ? '#0f5132' : '#842029';
+                const statusFundo = t.status_pagamento === 'LIBERADO P/ NFE' ? '#d1e7dd' : '#f8d7da';
+
+                html += `
+                    <tr style="background-color: ${bg};">
+                        <td style="padding: 8px; border: 1px solid #dddddd; font-weight: bold; color: #0d6efd;">#${t.os}</td>
+                        <td style="padding: 8px; border: 1px solid #dddddd;">${t.nr}</td>
+                        <td style="padding: 8px; border: 1px solid #dddddd; font-weight: bold;">${t.casa}</td>
+                        <td style="padding: 8px; border: 1px solid #dddddd;">${t.unidade}</td>
+                        <td style="padding: 8px; border: 1px solid #dddddd;">${t.descricao}</td>
+                        <td style="padding: 8px; border: 1px solid #dddddd;">${t.mes_emissao}</td>
+                        <td style="padding: 8px; border: 1px solid #dddddd;">
+                            <span style="background: ${statusFundo}; color: ${statusCor}; padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 11px;">
+                                ${t.status_pagamento}
+                            </span>
+                        </td>
+                        <td style="padding: 8px; border: 1px solid #dddddd; text-align: right; font-weight: bold;">R$ ${fmt(t.valor)}</td>
+                    </tr>
+                `;
+
+                plain += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\t${t.status_pagamento}\tR$ ${fmt(t.valor)}\n`;
+            });
+
+            html += `
+                        </tbody>
+                        <tfoot>
+                            <tr style="background-color: #e8f4fd; font-weight: bold;">
+                                <td colspan="6" style="padding: 10px; border: 1px solid #b8daff; text-align: right; font-size: 13px;">
+                                    TOTAL AUTORIZADO PARA EMISSÃO DE NF-E (${liberados.length} O.S.):
+                                </td>
+                                <td colspan="2" style="padding: 10px; border: 1px solid #b8daff; text-align: right; font-size: 14px; color: #0ca30c;">
+                                    R$ ${fmt(valLiberado)}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <p style="font-size: 12px; color: #777777; margin-top: 12px;">
+                        * Emitir a Nota Fiscal Eletrônica com base nos dados e valores discriminados acima.
+                    </p>
+                </div>
+            `;
+
+            plain += `\nTOTAL LIBERADO PARA NFE: R$ ${fmt(valLiberado)} (${liberados.length} O.S.)\nTOTAL GERAL DO FILTRO: R$ ${fmt(valTotal)}`;
+
+            try {
+                const blobHtml = new Blob([html], { type: 'text/html' });
+                const blobText = new Blob([plain], { type: 'text/plain' });
+                const data = [new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText })];
+
+                navigator.clipboard.write(data).then(() => {
+                    showCopyToast('📋 Tabela copiada com sucesso! Cole no seu e-mail (Ctrl+V).');
+                }).catch(() => {
+                    navigator.clipboard.writeText(plain).then(() => {
+                        showCopyToast('📋 Dados copiados como texto! Cole no seu e-mail (Ctrl+V).');
+                    });
+                });
+            } catch (err) {
+                navigator.clipboard.writeText(plain).then(() => {
+                    showCopyToast('📋 Dados copiados! Cole no seu e-mail (Ctrl+V).');
+                });
+            }
+        }
+
+        function copiarMensagemAutorizacao() {
+            const payList = getPayFiltered();
+            const liberados = payList.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const valLiberado = liberados.reduce((acc, t) => acc + (t.valor || 0), 0);
+
+            const casaTxt = state.payFilters.casa ? state.payFilters.casa : 'SESI / SENAI';
+            const mesTxt = state.payFilters.mes ? state.payFilters.mes : 'Competência Atual';
+
+            let texto = `Assunto: Autorização para Emissão de Nota Fiscal - Manutenção Predial (${casaTxt} - ${mesTxt})\n\n`;
+            texto += `Prezados,\n\n`;
+            texto += `Informamos que os serviços de manutenção predial listados abaixo foram conferidos, atestados e LIBERADOS para faturamento e emissão da respectiva Nota Fiscal Eletrônica (NF-e):\n\n`;
+            texto += `------------------------------------------------------------\n`;
+            texto += `DADOS DA MEDIÇÃO:\n`;
+            texto += `• Entidade Contratante: ${casaTxt}\n`;
+            texto += `• Mês de Competência: ${mesTxt}\n`;
+            texto += `• Quantidade de O.S. Atestadas: ${liberados.length} ordem(ns) de serviço\n`;
+            texto += `• Valor Total Autorizado para NF-e: R$ ${fmt(valLiberado)}\n`;
+            texto += `------------------------------------------------------------\n\n`;
+            texto += `RELAÇÃO DAS ORDENS DE SERVIÇO APROVADAS:\n`;
+
+            liberados.forEach((t, idx) => {
+                texto += `${idx + 1}) O.S #${t.os} (NR ${t.nr}) - ${t.unidade}\n`;
+                texto += `   Serviço: ${t.descricao}\n`;
+                texto += `   Valor: R$ ${fmt(t.valor)}\n\n`;
+            });
+
+            texto += `Favor emitir a NF-e no CNPJ correspondente com a discriminação dos serviços e nos encaminhar junto aos relatórios fotográficos e medições para pagamento.\n\n`;
+            texto += `Atenciosamente,\n`;
+            texto += `Gestão de Manutenção Predial - SESI/SENAI`;
+
+            navigator.clipboard.writeText(texto).then(() => {
+                showCopyToast('✉️ Mensagem de autorização copiada! Cole no corpo do e-mail (Ctrl+V).');
+            });
         }
 
         function toggleFilter(type, value) {
