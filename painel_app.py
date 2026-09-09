@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
+import re
 from datetime import datetime
 from io import BytesIO
 import base64
@@ -61,9 +62,61 @@ data_col = next((c for c in df_os.columns if 'DATA' in c.upper() and 'ENVIO' in 
 if data_col:
     df_os[data_col] = pd.to_datetime(df_os[data_col], errors='coerce')
 
-# Detecção de coluna de mês de emissão / competência
-mes_col = next((c for c in df_os.columns if any(k in c.upper() for k in ['MÊS', 'MES', 'EMISSÃO', 'EMISSAO', 'COMPETÊNCIA', 'COMPETENCIA'])), None)
+# Detecção ampla e flexível da coluna de competência/faturamento
+mes_col = next((c for c in df_os.columns if any(k in c.upper() for k in [
+    'MÊS', 'MES', 'EMISSÃO', 'EMISSAO', 'COMPETÊNCIA', 'COMPETENCIA', 
+    'FATURAMENTO', 'FATURA', 'REFERÊNCIA', 'REFERENCIA', 'REF'
+])), None)
 nf_col = next((c for c in df_os.columns if any(k in c.upper() for k in ['NF', 'NFE', 'NOTA FISCAL'])), None)
+
+# Ordem base dos meses no calendário para ordenação natural
+ORDEM_MESES = {
+    'JANEIRO': 1, 'JAN': 1, 'FEVEREIRO': 2, 'FEV': 2, 'MARÇO': 3, 'MARCO': 3, 'MAR': 3,
+    'ABRIL': 4, 'ABR': 4, 'MAIO': 5, 'MAI': 5, 'JUNHO': 6, 'JUN': 6, 'JULHO': 7, 'JUL': 7,
+    'AGOSTO': 8, 'AGO': 8, 'SETEMBRO': 9, 'SET': 9, 'OUTUBRO': 10, 'OUT': 10,
+    'NOVEMBRO': 11, 'NOV': 11, 'DEZEMBRO': 12, 'DEZ': 12
+}
+
+def obter_peso_mes(m_str):
+    """
+    Calcula um peso numérico (Ano * 100 + Mês) para ordenar qualquer mês
+    presente ou futuro de forma estritamente cronológica, mesmo com anos diferentes.
+    """
+    m_clean = str(m_str).strip().upper()
+    
+    # Extrai o ano se estiver presente (ex: 2026, 2027, /26, /27)
+    ano = datetime.now().year
+    match_ano = re.search(r'(20\d\d|\b\d{2}\b)', m_clean)
+    if match_ano:
+        ano_val = int(match_ano.group(1))
+        ano = 2000 + ano_val if ano_val < 100 else ano_val
+
+    # Identifica o mês nominal
+    mes_num = 99
+    for nome, peso in ORDEM_MESES.items():
+        if nome in m_clean:
+            mes_num = peso
+            break
+            
+    # Caso esteja em formato numérico como "01/2027" ou "1/2026"
+    if mes_num == 99:
+        match_num = re.search(r'\b(0?[1-9]|1[0-2])\b', m_clean)
+        if match_num:
+            mes_num = int(match_num.group(1))
+
+    return ano * 100 + mes_num
+
+# Coleta dinâmica dos meses existentes na planilha atual (sempre recalculado a cada upload)
+meses_existentes = []
+if mes_col:
+    valores_mes = df_os[mes_col].dropna().astype(str).str.strip().unique()
+    for m in valores_mes:
+        m_upper = m.upper()
+        if m_upper not in ['', 'NAN', 'NONE', '-', 'NÃO DEFINIDO', 'NAO DEFINIDO']:
+            if m_upper not in meses_existentes:
+                meses_existentes.append(m_upper)
+    # Ordena dinamicamente na linha do tempo
+    meses_existentes = sorted(meses_existentes, key=obter_peso_mes)
 
 hoje = datetime.now()
 total_chamados = len(df_os)
@@ -91,6 +144,7 @@ data = {
     'status_dist': {},
     'unidades': {},
     'totais': {},
+    'meses_existentes': meses_existentes,
     'contracts': {
         'sesi': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0},
         'senai': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0}
@@ -102,17 +156,22 @@ for _, row in df_os.iterrows():
     status = str(row['STATUS'])
     dias_abertos = None
     data_envio_str = ''
-    mes_emissao = 'Não Definido'
+    
+    # Determina o mês de emissão estritamente da planilha
+    mes_emissao = '-'
+    if mes_col and pd.notna(row[mes_col]):
+        m_txt = str(row[mes_col]).strip().upper()
+        if m_txt not in ['', 'NAN', 'NONE', '-']:
+            mes_emissao = m_txt
+    elif not mes_col and data_col and pd.notna(row[data_col]):
+        data_envio_dt = pd.to_datetime(row[data_col])
+        mes_emissao = f"{MESES_PT.get(data_envio_dt.month, data_envio_dt.month)}/{data_envio_dt.year}".upper()
     
     if data_col and pd.notna(row[data_col]):
         data_envio_dt = pd.to_datetime(row[data_col])
         data_envio_str = data_envio_dt.strftime('%Y-%m-%d')
-        mes_emissao = f"{MESES_PT.get(data_envio_dt.month, data_envio_dt.month)}/{data_envio_dt.year}"
         if status != 'CONCLUIDO':
             dias_abertos = (hoje - data_envio_dt).days
-            
-    if mes_col and pd.notna(row[mes_col]) and str(row[mes_col]).strip() != '':
-        mes_emissao = str(row[mes_col]).strip()
 
     num_nf = str(row[nf_col]).strip() if nf_col and pd.notna(row[nf_col]) else '-'
     if num_nf.lower() == 'nan': num_nf = '-'
@@ -1147,7 +1206,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function renderPaymentMonthFilters() {
-            const mesesValidos = [...new Set(state.tickets.map(t => t.mes_emissao))].filter(m => m && m !== 'Não Definido').sort();
+            // Utiliza apenas os meses reais existentes e preenchidos na planilha
+            let mesesValidos = DATA.meses_existentes || [];
+            if (mesesValidos.length === 0) {
+                mesesValidos = [...new Set(state.tickets.map(t => t.mes_emissao))]
+                    .filter(m => m && !['-', 'NÃO DEFINIDO', 'NAN', ''].includes(m.toUpperCase()));
+            }
             
             let htmlMes = `
                 <span class="filter-chip filter-chip-pay ${state.payFilters.mes === '' ? 'active' : ''}" onclick="setPayMonth('')">
