@@ -61,7 +61,7 @@ data_col = next((c for c in df_os.columns if 'DATA' in c.upper() and 'ENVIO' in 
 if data_col:
     df_os[data_col] = pd.to_datetime(df_os[data_col], errors='coerce')
 
-# Detecção de coluna de mês de emissão / nota fiscal / conclusão
+# Detecção de coluna de mês de emissão / competência
 mes_col = next((c for c in df_os.columns if any(k in c.upper() for k in ['MÊS', 'MES', 'EMISSÃO', 'EMISSAO', 'COMPETÊNCIA', 'COMPETENCIA'])), None)
 nf_col = next((c for c in df_os.columns if any(k in c.upper() for k in ['NF', 'NFE', 'NOTA FISCAL'])), None)
 
@@ -206,8 +206,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             --dark: #0b0b0b;
             --text: #333;
             --border: #ddd;
-            --pay-bg: #f0f7ff;
-            --pay-border: #b8daff;
         }
 
         body {
@@ -450,7 +448,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-radius: 4px;
             font-size: 13px;
             width: 100%;
-            max-width: 300px;
+            max-width: 100%;
+            background: white;
         }
 
         .filter-input:focus {
@@ -678,18 +677,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             transform: translateY(0);
         }
 
-        .btn-action-secondary {
-            background: #ffffff;
-            color: #0d6efd;
-            border: 1px solid #0d6efd;
-            box-shadow: none;
-        }
-
-        .btn-action-secondary:hover {
-            background: #f0f7ff;
-            color: #0a58ca;
-        }
-
         .copy-toast {
             display: inline-flex;
             align-items: center;
@@ -770,7 +757,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <!-- ======================================================= -->
-        <!-- NOVO PAINEL: CONTROLE DE PAGAMENTO / LIBERAÇÃO DE NFE  -->
+        <!-- PAINEL: CONTROLE DE PAGAMENTO / LIBERAÇÃO DE NFE        -->
         <!-- ======================================================= -->
         <div class="card payment-card" id="painelPagamentos">
             <div class="payment-header">
@@ -860,9 +847,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
 
+            <!-- Botão de Cópia Única para E-mail -->
             <div style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                    <button class="btn-action-copy" onclick="copiarTabelaEmail()" title="Copia a tabela dos serviços liberados para colar diretamente no Gmail, Outlook ou Excel">
+                    <button class="btn-action-copy" onclick="copiarTabelaEmail()" title="Copia apenas as O.S. liberadas para emissão de NF-e e formata para colar no e-mail ou Excel">
                         📋 Copiar Tabela p/ E-mail
                     </button>
                 </div>
@@ -872,7 +860,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- Tabela Completa de Chamados Geral -->
+        <!-- ======================================================= -->
+        <!-- TABELA COMPLETA DE CHAMADOS GERAL                       -->
+        <!-- ======================================================= -->
         <div class="card">
             <div class="card-title">📋 Lista Completa de Chamados</div>
             
@@ -881,15 +871,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div class="filter-group" id="listStatusFilter"></div>
             </div>
 
-            <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
-                <div style="flex: 1; min-width: 220px;">
+            <!-- Controles de Busca: O.S. e Unidade -->
+            <div style="margin-bottom: 16px; display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 200px;">
                     <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #666;">🔍 Buscar por O.S.</label>
                     <input type="text" class="filter-input" id="osSearch" placeholder="Ex: 194876" oninput="filterByOS(this.value)" />
                 </div>
-                <div style="font-size: 13px; color: #666;">
+
+                <div style="flex: 1.5; min-width: 260px;">
+                    <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #666;">🏢 Filtrar por Unidade</label>
+                    <select class="filter-input" id="unitSelect" onchange="filterByListUnit(this.value)" style="cursor: pointer;">
+                        <option value="">Carregando unidades...</option>
+                    </select>
+                </div>
+
+                <div style="font-size: 13px; color: #666; padding-bottom: 8px;">
                     Exibindo <strong id="ticketCount">0</strong> de <strong id="totalTickets">0</strong> chamados
                 </div>
             </div>
+
             <div class="table-wrapper">
                 <table id="ticketTable">
                     <thead>
@@ -931,7 +931,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         let state = {
             tickets: [],
-            filters: { status: [], unidade: [], os: '', listStatus: '' },
+            filters: { status: [], unidade: [], os: '', listStatus: '', listUnit: '' },
             payFilters: { mes: '', statusPagamento: '', casa: '' }
         };
 
@@ -941,20 +941,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('totalTickets').textContent = state.tickets.length;
             renderFilters();
             renderListStatusFilter();
+            renderListUnitFilter();
             renderPaymentCasaFilters();
             renderPaymentMonthFilters();
             render();
         }
 
         function getFiltered() {
-            if (state.filters.os !== '') {
-                return state.tickets.filter(t => t.os.toString().includes(state.filters.os));
-            }
             return state.tickets.filter(t => {
+                const matchOS = state.filters.os === '' || t.os.toString().includes(state.filters.os);
                 const matchStatus = state.filters.status.length === 0 || state.filters.status.includes(t.status);
-                const matchUnidade = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
+                const matchUnidadeGlobal = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
                 const matchListStatus = state.filters.listStatus === '' || t.status === state.filters.listStatus;
-                return matchStatus && matchUnidade && matchListStatus;
+                const matchListUnit = state.filters.listUnit === '' || t.unidade === state.filters.listUnit;
+                return matchOS && matchStatus && matchUnidadeGlobal && matchListStatus && matchListUnit;
             });
         }
 
@@ -1225,22 +1225,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             let rowsHTML = payList
                 .sort((a, b) => {
-                    // Ordenar primeiro os liberados para faturamento
                     if (a.status_pagamento === 'LIBERADO P/ NFE' && b.status_pagamento !== 'LIBERADO P/ NFE') return -1;
                     if (a.status_pagamento !== 'LIBERADO P/ NFE' && b.status_pagamento === 'LIBERADO P/ NFE') return 1;
                     return b.valor - a.valor;
                 })
                 .map(t => {
-                    let badgeClass = 'pay-badge-pendente';
+                    let badgeClass = 'status-aguardando-orcamento';
                     let icone = '⏳';
                     if (t.status_pagamento === 'LIBERADO P/ NFE') {
-                        badgeClass = 'pay-badge-liberado';
+                        badgeClass = 'status-concluido';
                         icone = '✅';
                     } else if (t.status_pagamento === 'EM MEDIÇÃO') {
-                        badgeClass = 'pay-badge-medicao';
+                        badgeClass = 'status-em-execucao';
                         icone = '🔄';
                     } else if (t.status_pagamento === 'BLOQUEADO') {
-                        badgeClass = 'pay-badge-bloqueado';
+                        badgeClass = 'status-paralisado';
                         icone = '⛔';
                     }
 
@@ -1275,7 +1274,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             document.getElementById('payTableBody').innerHTML = rowsHTML;
 
-            // Renderizar Linha Final de Totalização (tfoot)
+            // Linha Final de Totalização (tfoot)
             const footHTML = `
                 <tr>
                     <td colspan="4" style="font-size: 13px; text-transform: uppercase; color: #1e293b;">
@@ -1291,7 +1290,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             `;
             document.getElementById('payTableFoot').innerHTML = footHTML;
 
-            // Atualizar barra inferior de fechamento
             const casaNome = state.payFilters.casa ? state.payFilters.casa : 'SESI + SENAI';
             const mesNome = state.payFilters.mes ? state.payFilters.mes : 'Todos os Meses';
             document.getElementById('paySummaryFooterText').innerHTML = `
@@ -1313,7 +1311,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         function copiarTabelaEmail() {
             const payList = getPayFiltered();
-            // Filtrar estritamente apenas os chamados que estão LIBERADOS PARA NFE
             const liberados = payList.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
 
             if (liberados.length === 0) {
@@ -1327,7 +1324,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const casaTxt = state.payFilters.casa ? state.payFilters.casa : 'SESI / SENAI';
             const mesTxt = state.payFilters.mes ? state.payFilters.mes : 'Todos os Meses';
 
-            // Montar HTML estilizado inline para colar no Outlook, Gmail ou Excel
             let html = `
                 <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.5;">
                     <p style="font-size: 14px; margin-bottom: 8px;">
@@ -1409,10 +1405,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const data = [new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText })];
 
                 navigator.clipboard.write(data).then(() => {
-                    showCopyToast(`📋 Tabela de faturamento copiada (${liberados.length} O.S. liberadas)! Cole no e-mail (Ctrl+V).`);
+                    showCopyToast(`📋 Tabela copiada (${liberados.length} O.S. liberadas)! Cole no e-mail (Ctrl+V).`);
                 }).catch(() => {
                     navigator.clipboard.writeText(plain).then(() => {
-                        showCopyToast(`📋 Dados de faturamento copiados (${liberados.length} O.S.)! Cole no e-mail (Ctrl+V).`);
+                        showCopyToast(`📋 Dados copiados (${liberados.length} O.S.)! Cole no e-mail (Ctrl+V).`);
                     });
                 });
             } catch (err) {
@@ -1434,6 +1430,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         function filterByOS(value) {
             state.filters.os = value.trim();
+            render();
+        }
+
+        function filterByListUnit(unit) {
+            state.filters.listUnit = unit;
             render();
         }
 
@@ -1459,6 +1460,47 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 `;
             });
             document.getElementById('listStatusFilter').innerHTML = html;
+        }
+
+        function renderListUnitFilter() {
+            const select = document.getElementById('unitSelect');
+            if (!select) return;
+
+            const todasUnidades = [...new Set(state.tickets.map(t => t.unidade))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+            const sesi = todasUnidades.filter(u => u.toUpperCase().includes('SESI'));
+            const senai = todasUnidades.filter(u => u.toUpperCase().includes('SENAI'));
+            const outras = todasUnidades.filter(u => !u.toUpperCase().includes('SESI') && !u.toUpperCase().includes('SENAI'));
+
+            let html = `<option value="">🏢 Todas as Unidades (${todasUnidades.length})</option>`;
+
+            if (sesi.length > 0) {
+                html += `<optgroup label="🔵 UNIDADES SESI">`;
+                sesi.forEach(u => {
+                    const sel = state.filters.listUnit === u ? 'selected' : '';
+                    html += `<option value="${u}" ${sel}>${u}</option>`;
+                });
+                html += `</optgroup>`;
+            }
+
+            if (senai.length > 0) {
+                html += `<optgroup label="🟠 UNIDADES SENAI">`;
+                senai.forEach(u => {
+                    const sel = state.filters.listUnit === u ? 'selected' : '';
+                    html += `<option value="${u}" ${sel}>${u}</option>`;
+                });
+                html += `</optgroup>`;
+            }
+
+            if (outras.length > 0) {
+                html += `<optgroup label="⚪ OUTRAS">`;
+                outras.forEach(u => {
+                    const sel = state.filters.listUnit === u ? 'selected' : '';
+                    html += `<option value="${u}" ${sel}>${u}</option>`;
+                });
+                html += `</optgroup>`;
+            }
+
+            select.innerHTML = html;
         }
 
         function renderCharts() {
@@ -1553,7 +1595,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             });
             legendaHTML += '</div>';
 
-            // Separar unidades por SESI e SENAI e ordenar ALFABETICAMENTE de A a Z
             const todasUnidades = Object.keys(unitData);
             const unidadesSesi = todasUnidades
                 .filter(u => u.toUpperCase().includes('SESI'))
@@ -1567,14 +1608,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 .filter(u => !u.toUpperCase().includes('SESI') && !u.toUpperCase().includes('SENAI'))
                 .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
-            // Se houver unidades genéricas, distribuir proporcionalmente ou adicionar ao SESI
             if (unidadesOutras.length > 0) {
                 unidadesSesi.push(...unidadesOutras);
             }
 
             const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
 
-            // Calcular totais de SESI e SENAI para os cabeçalhos das colunas
             let totalChamadosSesi = 0;
             let totalInvestidoSesi = 0;
             unidadesSesi.forEach(u => {
@@ -1589,7 +1628,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 totalInvestidoSenai += unitData[u].valor;
             });
 
-            // Gerador de cards individuais
             const buildCard = (unit, casaClass) => {
                 const total = Object.values(unitData[unit].status).reduce((s, v) => s + v, 0);
                 const valor = unitData[unit].valor;
@@ -1690,9 +1728,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                     return `
                         <tr>
-                            <td style="font-weight: 600;">#${t.os}</td>
+                            <td style="font-weight: 600; color: #0d6efd;">#${t.os}</td>
                             <td>${t.nr}</td>
-                            <td>${t.unidade}</td>
+                            <td><strong>${t.unidade}</strong></td>
                             <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
                             <td><span class="status-badge ${statusClass}">${t.status}</span></td>
                             <td>${t.data_envio || '-'}</td>
@@ -1701,6 +1739,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </tr>
                     `;
                 }).join('');
+
+            if (filtered.length === 0) {
+                html = '<tr><td colspan="8" style="text-align:center; padding: 24px; color: #999;">Nenhum chamado localizado para os filtros selecionados.</td></tr>';
+            }
 
             document.getElementById('tableBody').innerHTML = html;
         }
