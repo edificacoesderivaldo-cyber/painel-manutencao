@@ -325,7 +325,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .header {
             display: flex;
+            justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
             gap: 16px;
             margin-bottom: 30px;
             padding: 20px;
@@ -344,6 +346,56 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             color: #666;
             margin: 0;
             font-size: 14px;
+        }
+
+        .card-title-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--light);
+        }
+
+        .btn-print {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            background: #f8fafc;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .btn-print:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+            border-color: #94a3b8;
+            transform: translateY(-1px);
+        }
+
+        .btn-print:active {
+            transform: translateY(0);
+        }
+
+        .btn-print-primary {
+            background: #0d6efd;
+            color: #ffffff;
+            border-color: #0d6efd;
+        }
+
+        .btn-print-primary:hover {
+            background: #0b5ed7;
+            color: #ffffff;
+            border-color: #0a58ca;
         }
 
         .kpi-section {
@@ -798,10 +850,77 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             opacity: 1;
         }
 
+        .print-header-stamp {
+            display: none;
+        }
+
         @media print {
-            body { background: white; }
-            .filter-section { display: none; }
-            .kpi-card:hover { box-shadow: none; }
+            body { 
+                background: white !important;
+                color: #000 !important;
+            }
+
+            .no-print,
+            .btn-print,
+            .btn-action-copy,
+            .copy-toast,
+            .filter-section,
+            #filters,
+            #payCasaFilters,
+            #payMonthFilters,
+            #payStatusFilters,
+            #listStatusFilter,
+            .filter-input {
+                display: none !important;
+            }
+
+            .print-header-stamp {
+                display: block !important;
+                margin-bottom: 18px;
+                padding-bottom: 12px;
+                border-bottom: 2px solid #333;
+            }
+
+            .print-header-stamp h2 {
+                font-size: 18px;
+                color: #111;
+                margin: 0 0 4px 0;
+            }
+
+            .print-header-stamp p {
+                font-size: 12px;
+                color: #555;
+                margin: 0;
+            }
+
+            /* Quando o usuário imprime um painel específico */
+            body.is-printing-panel .container > *:not(.target-print-active) {
+                display: none !important;
+            }
+
+            body.is-printing-panel .target-print-active {
+                display: block !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+
+            .card, .kpi-card {
+                box-shadow: none !important;
+                border: 1px solid #ccc !important;
+                page-break-inside: avoid;
+            }
+
+            table {
+                page-break-inside: auto;
+            }
+
+            tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
         }
 
         @media (max-width: 768px) {
@@ -817,41 +936,58 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <h1>📊 Painel de Manutenção Predial & Liberação de Pagamentos</h1>
                 <p>SESI e SENAI — Acompanhamento de Chamados, Emissão de NFE e Gestão Orçamentária</p>
             </div>
+            <div class="no-print">
+                <button class="btn-print btn-print-primary" onclick="imprimirRelatorioGeral()" title="Imprime ou gera PDF de todo o painel consolidado">
+                    🖨️ Imprimir Relatório Completo
+                </button>
+            </div>
         </div>
 
         <!-- KPIs Gerais -->
         <div class="kpi-section" id="kpis"></div>
 
         <!-- Saldo em Contrato + Tempo em Aberto -->
-        <div class="grid2">
+        <div class="grid2" id="painelContratosPrazos">
             <div class="card" style="margin-bottom: 0;">
-                <div class="card-title">💰 Saldo em Contrato</div>
+                <div class="card-title-bar">
+                    <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">💰 Saldo em Contrato</div>
+                    <button class="btn-print no-print" onclick="imprimirPainel('painelContratosPrazos', 'Saldos em Contrato e Tempo Médio')">🖨️ Imprimir</button>
+                </div>
                 <div id="contracts"></div>
             </div>
 
             <div class="card" style="margin-bottom: 0;">
-                <div class="card-title">⏱️ Tempo Médio em Aberto</div>
+                <div class="card-title-bar">
+                    <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">⏱️ Tempo Médio em Aberto</div>
+                    <button class="btn-print no-print" onclick="imprimirPainel('painelContratosPrazos', 'Saldos em Contrato e Tempo Médio')">🖨️ Imprimir</button>
+                </div>
                 <div id="tempoAberto"></div>
             </div>
         </div>
 
         <!-- Distribuição de Status -->
-        <div class="card">
-            <div class="card-title">📈 Distribuição de Status</div>
+        <div class="card" id="painelStatus" style="margin-top: 24px;">
+            <div class="card-title-bar">
+                <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📈 Distribuição de Status</div>
+                <button class="btn-print no-print" onclick="imprimirPainel('painelStatus', 'Distribuição de Status dos Chamados')">🖨️ Imprimir Gráfico</button>
+            </div>
             <div class="chart-wrapper">
                 <canvas id="statusChart" role="img" aria-label="Distribuição de chamados por status"></canvas>
             </div>
         </div>
 
         <!-- Filtros Globais Interativos -->
-        <div class="card">
+        <div class="card no-print">
             <div class="card-title">🔍 Filtros Interativos Globais</div>
             <div class="filter-section" id="filters"></div>
         </div>
 
         <!-- Chamados por Unidade -->
-        <div class="card">
-            <div class="card-title">🏢 Chamados por Unidade (com investimento)</div>
+        <div class="card" id="painelUnidades">
+            <div class="card-title-bar">
+                <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">🏢 Chamados por Unidade (com investimento)</div>
+                <button class="btn-print no-print" onclick="imprimirPainel('painelUnidades', 'Investimento e Chamados por Unidade (SESI e SENAI)')">🖨️ Imprimir Unidades</button>
+            </div>
             <div class="chart-wrapper" style="height: 500px; margin-bottom: 20px;">
                 <canvas id="unitChart" role="img" aria-label="Distribuição de chamados por unidade"></canvas>
             </div>
@@ -871,8 +1007,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         Valide os serviços concluídos por mês e CNPJ (SESI/SENAI) para autorizar a empresa a emitir a Nota Fiscal
                     </p>
                 </div>
-                <div class="payment-badge-status" id="paySummaryBadge">
-                    Carregando resumo financeiro...
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn-print no-print" onclick="imprimirPainel('painelPagamentos', 'Controle de Pagamentos e Liberação para NF-e')" title="Imprimir este painel de faturamento">
+                        🖨️ Imprimir Faturamento
+                    </button>
+                    <div class="payment-badge-status" id="paySummaryBadge">
+                        Carregando resumo financeiro...
+                    </div>
                 </div>
             </div>
 
@@ -901,7 +1042,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
 
             <!-- Filtro de Entidade / CNPJ, Mês de Emissão e Status -->
-            <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
+            <div class="no-print" style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
                 <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
                     🏛️ Filtrar por Entidade / CNPJ de Faturamento (Casa):
                 </div>
@@ -950,7 +1091,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
 
             <!-- Botão de Cópia Única para E-mail -->
-            <div style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div class="no-print" style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                     <button class="btn-action-copy" onclick="copiarTabelaEmail()" title="Copia apenas as O.S. liberadas para emissão de NF-e e formata para colar no e-mail ou Excel">
                         📋 Copiar Tabela p/ E-mail
@@ -965,16 +1106,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- ======================================================= -->
         <!-- TABELA COMPLETA DE CHAMADOS GERAL                       -->
         <!-- ======================================================= -->
-        <div class="card">
-            <div class="card-title">📋 Lista Completa de Chamados</div>
+        <div class="card" id="painelChamados">
+            <div class="card-title-bar">
+                <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📋 Lista Completa de Chamados</div>
+                <button class="btn-print no-print" onclick="imprimirPainel('painelChamados', 'Lista Completa de Chamados')">🖨️ Imprimir Lista</button>
+            </div>
             
-            <div style="margin-bottom: 16px;">
+            <div class="no-print" style="margin-bottom: 16px;">
                 <div style="font-weight: 600; font-size: 13px; color: #666; margin-bottom: 10px;">Filtrar por Status na Tabela</div>
                 <div class="filter-group" id="listStatusFilter"></div>
             </div>
 
             <!-- Controles de Busca: O.S. e Unidade -->
-            <div style="margin-bottom: 16px; display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;">
+            <div class="no-print" style="margin-bottom: 16px; display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 200px;">
                     <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #666;">🔍 Buscar por O.S.</label>
                     <input type="text" class="filter-input" id="osSearch" placeholder="Ex: 194876" oninput="filterByOS(this.value)" />
@@ -1485,45 +1629,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                 plain += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
             });
+        function imprimirPainel(elementId, titulo) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
 
-            html += `
-                        </tbody>
-                        <tfoot>
-                            <tr style="background-color: #e8f4fd; font-weight: bold;">
-                                <td colspan="7" style="padding: 10px; border: 1px solid #b8daff; text-align: right; font-size: 13px;">
-                                    TOTAL AUTORIZADO PARA EMISSÃO DE NF-E (${liberados.length} O.S.):
-                                </td>
-                                <td style="padding: 10px; border: 1px solid #b8daff; text-align: right; font-size: 14px; color: #0ca30c;">
-                                    R$ ${fmt(valLiberado)}
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                    <p style="font-size: 12px; color: #777777; margin-top: 12px;">
-                        * Emitir a Nota Fiscal Eletrônica (NF-e) no CNPJ correspondente contendo estritamente os serviços e valores discriminados acima.
-                    </p>
-                </div>
+            // Remove marcações anteriores se houver
+            document.querySelectorAll('.target-print-active').forEach(n => n.classList.remove('target-print-active'));
+            document.querySelectorAll('.print-header-stamp').forEach(n => n.remove());
+
+            // Adiciona cabeçalho elegante de impressão exclusivo para a folha
+            const stamp = document.createElement('div');
+            stamp.className = 'print-header-stamp';
+            stamp.innerHTML = `
+                <h2>🏢 SESI / SENAI — Gestão de Manutenção Predial</h2>
+                <p><strong>Relatório:</strong> ${titulo || 'Painel'} | <strong>Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</p>
             `;
+            el.insertBefore(stamp, el.firstChild);
 
-            plain += `\nTOTAL LIBERADO PARA NF-E: R$ ${fmt(valLiberado)} (${liberados.length} O.S.)`;
+            el.classList.add('target-print-active');
+            document.body.classList.add('is-printing-panel');
 
-            try {
-                const blobHtml = new Blob([html], { type: 'text/html' });
-                const blobText = new Blob([plain], { type: 'text/plain' });
-                const data = [new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText })];
-
-                navigator.clipboard.write(data).then(() => {
-                    showCopyToast(`📋 Tabela copiada (${liberados.length} O.S. liberadas)! Cole no e-mail (Ctrl+V).`);
-                }).catch(() => {
-                    navigator.clipboard.writeText(plain).then(() => {
-                        showCopyToast(`📋 Dados copiados (${liberados.length} O.S.)! Cole no e-mail (Ctrl+V).`);
-                    });
-                });
-            } catch (err) {
-                navigator.clipboard.writeText(plain).then(() => {
-                    showCopyToast(`📋 Dados copiados! Cole no e-mail (Ctrl+V).`);
-                });
+            const tituloOriginal = document.title;
+            if (titulo) {
+                document.title = `${titulo} - SESI SENAI`;
             }
+
+            window.print();
+
+            setTimeout(() => {
+                document.body.classList.remove('is-printing-panel');
+                el.classList.remove('target-print-active');
+                if (stamp.parentNode) stamp.remove();
+                document.title = tituloOriginal;
+            }, 1000);
+        }
+
+        function imprimirRelatorioGeral() {
+            document.body.classList.remove('is-printing-panel');
+            document.querySelectorAll('.target-print-active').forEach(n => n.classList.remove('target-print-active'));
+            window.print();
         }
 
         function toggleFilter(type, value) {
