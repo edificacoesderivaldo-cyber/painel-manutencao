@@ -57,10 +57,36 @@ os_col = next((c for c in df_os.columns if 'O.S' in c.upper() or 'OS' in c.upper
 df_os['NR'] = pd.to_numeric(df_os[nr_col], errors='coerce').fillna(0).astype(int) if nr_col else 0
 df_os['O.S'] = pd.to_numeric(df_os[os_col], errors='coerce').fillna(0).astype(int)
 
-# Detecção de coluna de data de envio
-data_col = next((c for c in df_os.columns if 'DATA' in c.upper() and 'ENVIO' in c.upper()), None)
+def parse_data_br(val):
+    """
+    Converte qualquer valor de data respeitando estritamente o padrão brasileiro (dia/mês/ano).
+    Evita inversões de mês e dia (ex: 12/08 como dez/08) e cálculos com dias negativos.
+    """
+    if pd.isna(val) or val == '' or str(val).strip().lower() in ['nan', 'nat', '-', 'none']:
+        return None
+    if isinstance(val, (datetime, pd.Timestamp)):
+        return pd.to_datetime(val)
+    val_str = str(val).strip()
+    try:
+        # Força dayfirst=True para formato brasileiro DD/MM/AAAA
+        dt = pd.to_datetime(val_str, dayfirst=True, errors='coerce')
+        return dt if pd.notna(dt) else None
+    except Exception:
+        return None
+
+# Detecção flexível da coluna de data de envio/abertura do chamado
+data_col = next((c for c in df_os.columns if 'DATA' in c.upper() and any(k in c.upper() for k in ['ENVIO', 'CHAMADO', 'ABERTURA'])), None)
 if data_col:
-    df_os[data_col] = pd.to_datetime(df_os[data_col], errors='coerce')
+    df_os[data_col] = df_os[data_col].apply(parse_data_br)
+
+# Detecção da coluna de data de entrega/envio do orçamento registrada na planilha
+data_orc_col = next((c for c in df_os.columns if any(k in c.upper() for k in [
+    'DATA ORÇAMENTO', 'DATA ORCAMENTO', 'DATA ENTREGA ORÇAMENTO', 'DATA ENTREGA ORCAMENTO',
+    'DATA ENVIO ORÇAMENTO', 'DATA ENVIO ORCAMENTO', 'ENTREGA DO ORÇAMENTO', 'ENTREGA DO ORCAMENTO',
+    'DATA DE ENTREGA DO ORÇAMENTO', 'ENTREGA ORÇAMENTO', 'ENTREGA ORCAMENTO', 'DATA ORÇ.', 'DATA ORC.'
+])), None)
+if data_orc_col:
+    df_os[data_orc_col] = df_os[data_orc_col].apply(parse_data_br)
 
 # Detecção ampla e flexível da coluna de competência/faturamento
 mes_col = next((c for c in df_os.columns if any(k in c.upper() for k in [
@@ -130,7 +156,7 @@ abertos_30 = 0
 if data_col:
     for _, row in df_os.iterrows():
         if row['STATUS'] != 'CONCLUIDO' and pd.notna(row[data_col]):
-            dias = (hoje - pd.to_datetime(row[data_col])).days
+            dias = (hoje - row[data_col]).days
             if dias > 30:
                 abertos_30 += 1
 
@@ -145,6 +171,7 @@ data = {
     'unidades': {},
     'totais': {},
     'meses_existentes': meses_existentes,
+    'tem_coluna_orcamento': data_orc_col is not None,
     'contracts': {
         'sesi': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0},
         'senai': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0}
@@ -156,6 +183,8 @@ for _, row in df_os.iterrows():
     status = str(row['STATUS'])
     dias_abertos = None
     data_envio_str = ''
+    data_orc_str = ''
+    dias_orcamento = None
     
     # Determina o mês de emissão estritamente da planilha
     mes_emissao = '-'
@@ -164,14 +193,26 @@ for _, row in df_os.iterrows():
         if m_txt not in ['', 'NAN', 'NONE', '-']:
             mes_emissao = m_txt
     elif not mes_col and data_col and pd.notna(row[data_col]):
-        data_envio_dt = pd.to_datetime(row[data_col])
+        data_envio_dt = row[data_col]
         mes_emissao = f"{MESES_PT.get(data_envio_dt.month, data_envio_dt.month)}/{data_envio_dt.year}".upper()
     
+    # Tratamento da data de envio no padrão brasileiro dia/mês/ano (DD/MM/AAAA)
     if data_col and pd.notna(row[data_col]):
-        data_envio_dt = pd.to_datetime(row[data_col])
-        data_envio_str = data_envio_dt.strftime('%Y-%m-%d')
+        data_envio_dt = row[data_col]
+        data_envio_str = data_envio_dt.strftime('%d/%m/%Y')
         if status != 'CONCLUIDO':
-            dias_abertos = (hoje - data_envio_dt).days
+            dias_abertos = max(0, (hoje - data_envio_dt).days)
+
+    # Cálculo da entrega de orçamento baseado na data registrada na planilha
+    if data_orc_col and pd.notna(row[data_orc_col]):
+        data_orc_dt = row[data_orc_col]
+        data_orc_str = data_orc_dt.strftime('%d/%m/%Y')
+        if data_col and pd.notna(row[data_col]):
+            # Prazo real gasto computado na data registrada na planilha
+            dias_orcamento = max(0, (data_orc_dt - row[data_col]).days)
+    elif status == 'AGUARDANDO ORÇAMENTO' and data_col and pd.notna(row[data_col]):
+        # Se ainda aguarda orçamento sem data prévia registrada, conta dias até hoje
+        dias_orcamento = max(0, (hoje - row[data_col]).days)
 
     num_nf = str(row[nf_col]).strip() if nf_col and pd.notna(row[nf_col]) else '-'
     if num_nf.lower() == 'nan': num_nf = '-'
@@ -203,6 +244,8 @@ for _, row in df_os.iterrows():
         'valor': round(valor, 2),
         'data_envio': data_envio_str,
         'dias_abertos': dias_abertos,
+        'data_orcamento': data_orc_str,
+        'dias_orcamento': dias_orcamento,
         'mes_emissao': mes_emissao,
         'status_pagamento': status_pagamento,
         'nota_fiscal': num_nf
@@ -958,7 +1001,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             <th>Unidade</th>
                             <th>Descrição</th>
                             <th>Status</th>
-                            <th>Data Envio</th>
+                            <th>Data Envio (DD/MM/AAAA)</th>
+                            <th>Entrega Orçamento</th>
                             <th>Dias Abertos</th>
                             <th style="text-align: right;">Valor</th>
                         </tr>
@@ -1772,6 +1816,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 })
                 .map(t => {
                     const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                    
+                    // Coluna de Dias em Aberto (padrão dia/mês/ano sem números negativos)
                     let diasHTML = '';
                     if (t.dias_abertos !== null) {
                         let cor = '#0ca30c';
@@ -1783,9 +1829,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             cor = '#fab219';
                             fundo = '#fff3cd';
                         }
-                        diasHTML = `<td style="font-weight: 600; color: ${cor}; background: ${fundo}; border-radius: 4px; padding: 6px 10px; text-align: center;">${t.dias_abertos}d</td>`;
+                        diasHTML = `<td style="font-weight: 700; color: ${cor}; background: ${fundo}; border-radius: 4px; padding: 6px 10px; text-align: center;">${t.dias_abertos}d</td>`;
                     } else {
                         diasHTML = `<td style="text-align: center; color: #999;">-</td>`;
+                    }
+
+                    // Coluna de Entrega de Orçamento computada na data previamente registrada
+                    let orcHTML = '';
+                    if (t.data_orcamento) {
+                        const diasTxt = t.dias_orcamento !== null ? ` <span style="font-size: 11px; font-weight: 700; color: #0d6efd;">(${t.dias_orcamento}d)</span>` : '';
+                        orcHTML = `<td style="text-align: center; font-size: 12px; font-weight: 600; color: #1e293b;">📅 ${t.data_orcamento}${diasTxt}</td>`;
+                    } else if (t.status === 'AGUARDANDO ORÇAMENTO' && t.dias_orcamento !== null) {
+                        orcHTML = `<td style="text-align: center; font-size: 11px; font-weight: 700; color: #b45309; background: #fef3c7; border-radius: 4px;">⏳ Aguardando (${t.dias_orcamento}d)</td>`;
+                    } else {
+                        orcHTML = `<td style="text-align: center; color: #999;">-</td>`;
                     }
 
                     const valorFmt = new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(t.valor);
@@ -1797,7 +1854,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             <td><strong>${t.unidade}</strong></td>
                             <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
                             <td><span class="status-badge ${statusClass}">${t.status}</span></td>
-                            <td>${t.data_envio || '-'}</td>
+                            <td style="text-align: center; font-size: 12px; font-weight: 600; color: #334155;">${t.data_envio || '-'}</td>
+                            ${orcHTML}
                             ${diasHTML}
                             <td style="text-align: right; font-weight: 600;">R$ ${valorFmt}</td>
                         </tr>
@@ -1805,7 +1863,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }).join('');
 
             if (filtered.length === 0) {
-                html = '<tr><td colspan="8" style="text-align:center; padding: 24px; color: #999;">Nenhum chamado localizado para os filtros selecionados.</td></tr>';
+                html = '<tr><td colspan="9" style="text-align:center; padding: 24px; color: #999;">Nenhum chamado localizado para os filtros selecionados.</td></tr>';
             }
 
             document.getElementById('tableBody').innerHTML = html;
