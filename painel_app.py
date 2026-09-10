@@ -1629,6 +1629,50 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                 plain += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
             });
+
+            html += `
+                        </tbody>
+                        <tfoot>
+                            <tr style="background-color: #f1f5f9; font-weight: bold;">
+                                <td colspan="7" style="padding: 10px; border: 1px solid #cccccc; text-align: right;">VALOR TOTAL AUTORIZADO:</td>
+                                <td style="padding: 10px; border: 1px solid #cccccc; text-align: right; color: #0ca30c; font-size: 14px;">R$ ${fmt(valLiberado)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
+            plain += `\nVALOR TOTAL AUTORIZADO: R$ ${fmt(valLiberado)}\n`;
+
+            try {
+                if (navigator.clipboard && window.ClipboardItem) {
+                    const blobHtml = new Blob([html], { type: 'text/html' });
+                    const blobText = new Blob([plain], { type: 'text/plain' });
+                    const item = new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText });
+                    navigator.clipboard.write([item]).then(() => {
+                        showCopyToast('✅ Tabela copiada! Cole com Ctrl + V no seu e-mail.');
+                    }).catch(() => {
+                        copiarFallback(plain);
+                    });
+                } else {
+                    copiarFallback(plain);
+                }
+            } catch (err) {
+                copiarFallback(plain);
+            }
+        }
+
+        function copiarFallback(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            showCopyToast('✅ Dados copiados! Pressione Ctrl + V no seu e-mail.');
+        }
+
         function imprimirPainel(elementId, titulo) {
             const el = document.getElementById(elementId);
             if (!el) return;
