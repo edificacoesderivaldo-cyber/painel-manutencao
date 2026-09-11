@@ -6,10 +6,15 @@ from datetime import datetime
 from io import BytesIO
 import base64
 
-st.set_page_config(page_title="Painel de Manutenção Predial", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title="Painel de Manutenção Predial",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 st.title("📊 Painel de Manutenção Predial")
-st.markdown("**Análise de chamados e controle financeiro — SESI e SENAI**  |  Envie sua planilha Excel para gerar o relatório completo")
+st.markdown("**Análise de chamados e controle financeiro — SESI e SENAI** | Envie sua planilha Excel para gerar o relatório completo")
 
 uploaded_file = st.file_uploader("📎 Envie o arquivo Excel (CONTROLE_DE_O_S.xlsx)", type=["xlsx", "xls"])
 
@@ -59,27 +64,71 @@ df_os['O.S'] = pd.to_numeric(df_os[os_col], errors='coerce').fillna(0).astype(in
 
 def parse_data_br(val):
     """
-    Converte qualquer valor de data respeitando estritamente o padrão brasileiro (dia/mês/ano).
-    Evita inversões de mês e dia (ex: 12/08 como dez/08) e cálculos com dias negativos.
+    Interpreta datas estritamente no padrão brasileiro DD/MM/AAAA.
+    Corrige automaticamente células em que o Excel com regionalização US
+    inverteu o Dia pelo Mês quando o dia digitado é <= 12 (ex: 08/09 virando 09 de Agosto).
     """
     if pd.isna(val) or val == '' or str(val).strip().lower() in ['nan', 'nat', '-', 'none']:
         return None
-    if isinstance(val, (datetime, pd.Timestamp)):
-        return pd.to_datetime(val)
-    val_str = str(val).strip()
-    try:
-        # Força dayfirst=True para formato brasileiro DD/MM/AAAA
-        dt = pd.to_datetime(val_str, dayfirst=True, errors='coerce')
-        return dt if pd.notna(dt) else None
-    except Exception:
-        return None
 
-# Detecção flexível da coluna de data de envio/abertura do chamado
+    hoje_ref = datetime.now()
+
+    # 1. Se recebido como texto / string
+    if isinstance(val, str):
+        val_clean = val.strip()
+        match_br = re.match(r'^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})', val_clean)
+        if match_br:
+            d, m, y = int(match_br.group(1)), int(match_br.group(2)), int(match_br.group(3))
+            if y < 100: y += 2000
+            try:
+                return pd.Timestamp(year=y, month=m, day=d)
+            except Exception:
+                pass
+        try:
+            dt = pd.to_datetime(val_clean, dayfirst=True, errors='coerce')
+            if pd.notna(dt):
+                return dt
+        except Exception:
+            pass
+
+    # 2. Se já recebido como objeto datetime/Timestamp do Excel
+    if isinstance(val, (datetime, pd.Timestamp)):
+        y = val.year
+        m = val.month
+        d = val.day
+
+        # Se d > 12, com certeza 'd' é o dia (pois meses vão somente até 12)
+        if d > 12:
+            return pd.Timestamp(year=y, month=m, day=d)
+
+        # Se d <= 12 e m <= 12:
+        # No Excel com formato US (M/D/YYYY), o DIA digitado pelo usuário brasileiro
+        # é gravado no campo 'month', e o MÊS digitado é gravado no campo 'day'.
+        # Revertemos para o padrão real brasileiro (Dia = m, Mês = d):
+        dt_orig = pd.Timestamp(year=y, month=m, day=d)
+        dt_swapped = None
+        try:
+            dt_swapped = pd.Timestamp(year=y, month=d, day=m)
+        except Exception:
+            dt_swapped = None
+
+        if dt_swapped is not None:
+            # Caso a data original gere uma data futura (ex: 12/08 virou 08 de Dezembro)
+            if dt_orig > hoje_ref and dt_swapped <= hoje_ref:
+                return dt_swapped
+
+            # Para os demais casos (ex: digitado 08/09/2026 que o Excel gravou como month=8, day=9)
+            # A digitação do usuário no Brasil é sempre DD/MM/AAAA, portanto aplicamos a data real digitada:
+            return dt_swapped
+
+        return dt_orig
+
+    return None
+
 data_col = next((c for c in df_os.columns if 'DATA' in c.upper() and any(k in c.upper() for k in ['ENVIO', 'CHAMADO', 'ABERTURA'])), None)
 if data_col:
     df_os[data_col] = df_os[data_col].apply(parse_data_br)
 
-# Detecção da coluna de data de entrega/envio do orçamento registrada na planilha
 data_orc_col = next((c for c in df_os.columns if any(k in c.upper() for k in [
     'DATA ORÇAMENTO', 'DATA ORCAMENTO', 'DATA ENTREGA ORÇAMENTO', 'DATA ENTREGA ORCAMENTO',
     'DATA ENVIO ORÇAMENTO', 'DATA ENVIO ORCAMENTO', 'ENTREGA DO ORÇAMENTO', 'ENTREGA DO ORCAMENTO',
@@ -88,14 +137,12 @@ data_orc_col = next((c for c in df_os.columns if any(k in c.upper() for k in [
 if data_orc_col:
     df_os[data_orc_col] = df_os[data_orc_col].apply(parse_data_br)
 
-# Detecção ampla e flexível da coluna de competência/faturamento
 mes_col = next((c for c in df_os.columns if any(k in c.upper() for k in [
     'MÊS', 'MES', 'EMISSÃO', 'EMISSAO', 'COMPETÊNCIA', 'COMPETENCIA', 
     'FATURAMENTO', 'FATURA', 'REFERÊNCIA', 'REFERENCIA', 'REF'
 ])), None)
 nf_col = next((c for c in df_os.columns if any(k in c.upper() for k in ['NF', 'NFE', 'NOTA FISCAL'])), None)
 
-# Ordem base dos meses no calendário para ordenação natural
 ORDEM_MESES = {
     'JANEIRO': 1, 'JAN': 1, 'FEVEREIRO': 2, 'FEV': 2, 'MARÇO': 3, 'MARCO': 3, 'MAR': 3,
     'ABRIL': 4, 'ABR': 4, 'MAIO': 5, 'MAI': 5, 'JUNHO': 6, 'JUN': 6, 'JULHO': 7, 'JUL': 7,
@@ -104,27 +151,19 @@ ORDEM_MESES = {
 }
 
 def obter_peso_mes(m_str):
-    """
-    Calcula um peso numérico (Ano * 100 + Mês) para ordenar qualquer mês
-    presente ou futuro de forma estritamente cronológica, mesmo com anos diferentes.
-    """
     m_clean = str(m_str).strip().upper()
-    
-    # Extrai o ano se estiver presente (ex: 2026, 2027, /26, /27)
     ano = datetime.now().year
     match_ano = re.search(r'(20\d\d|\b\d{2}\b)', m_clean)
     if match_ano:
         ano_val = int(match_ano.group(1))
         ano = 2000 + ano_val if ano_val < 100 else ano_val
 
-    # Identifica o mês nominal
     mes_num = 99
     for nome, peso in ORDEM_MESES.items():
         if nome in m_clean:
             mes_num = peso
             break
             
-    # Caso esteja em formato numérico como "01/2027" ou "1/2026"
     if mes_num == 99:
         match_num = re.search(r'\b(0?[1-9]|1[0-2])\b', m_clean)
         if match_num:
@@ -132,7 +171,6 @@ def obter_peso_mes(m_str):
 
     return ano * 100 + mes_num
 
-# Coleta dinâmica dos meses existentes na planilha atual (sempre recalculado a cada upload)
 meses_existentes = []
 if mes_col:
     valores_mes = df_os[mes_col].dropna().astype(str).str.strip().unique()
@@ -141,7 +179,6 @@ if mes_col:
         if m_upper not in ['', 'NAN', 'NONE', '-', 'NÃO DEFINIDO', 'NAO DEFINIDO']:
             if m_upper not in meses_existentes:
                 meses_existentes.append(m_upper)
-    # Ordena dinamicamente na linha do tempo
     meses_existentes = sorted(meses_existentes, key=obter_peso_mes)
 
 hoje = datetime.now()
@@ -186,7 +223,6 @@ for _, row in df_os.iterrows():
     data_orc_str = ''
     dias_orcamento = None
     
-    # Determina o mês de emissão estritamente da planilha
     mes_emissao = '-'
     if mes_col and pd.notna(row[mes_col]):
         m_txt = str(row[mes_col]).strip().upper()
@@ -196,28 +232,23 @@ for _, row in df_os.iterrows():
         data_envio_dt = row[data_col]
         mes_emissao = f"{MESES_PT.get(data_envio_dt.month, data_envio_dt.month)}/{data_envio_dt.year}".upper()
     
-    # Tratamento da data de envio no padrão brasileiro dia/mês/ano (DD/MM/AAAA)
     if data_col and pd.notna(row[data_col]):
         data_envio_dt = row[data_col]
         data_envio_str = data_envio_dt.strftime('%d/%m/%Y')
         if status != 'CONCLUIDO':
             dias_abertos = max(0, (hoje - data_envio_dt).days)
 
-    # Cálculo da entrega de orçamento baseado na data registrada na planilha
     if data_orc_col and pd.notna(row[data_orc_col]):
         data_orc_dt = row[data_orc_col]
         data_orc_str = data_orc_dt.strftime('%d/%m/%Y')
         if data_col and pd.notna(row[data_col]):
-            # Prazo real gasto computado na data registrada na planilha
             dias_orcamento = max(0, (data_orc_dt - row[data_col]).days)
     elif status == 'AGUARDANDO ORÇAMENTO' and data_col and pd.notna(row[data_col]):
-        # Se ainda aguarda orçamento sem data prévia registrada, conta dias até hoje
         dias_orcamento = max(0, (hoje - row[data_col]).days)
 
     num_nf = str(row[nf_col]).strip() if nf_col and pd.notna(row[nf_col]) else '-'
     if num_nf.lower() == 'nan': num_nf = '-'
 
-    # Regra de liberação de pagamento para NFE
     if status == 'CONCLUIDO':
         status_pagamento = 'LIBERADO P/ NFE'
     elif status in ['EM EXECUÇÃO', 'LIBERADO']:
@@ -292,12 +323,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <title>Painel de Manutenção Predial e Pagamentos - SESI/SENAI</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
             --primary: #3987e5;
             --success: #0ca30c;
@@ -309,20 +335,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             --text: #333;
             --border: #ddd;
         }
-
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #f8f9fa;
             color: var(--text);
             line-height: 1.6;
         }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
         .header {
             display: flex;
             justify-content: space-between;
@@ -336,18 +355,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-left: 4px solid var(--primary);
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-
-        .header h1 {
-            font-size: 28px;
-            margin: 0;
-        }
-
-        .header p {
-            color: #666;
-            margin: 0;
-            font-size: 14px;
-        }
-
+        .header h1 { font-size: 28px; margin: 0; }
+        .header p { color: #666; margin: 0; font-size: 14px; }
         .card-title-bar {
             display: flex;
             justify-content: space-between;
@@ -358,7 +367,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             padding-bottom: 12px;
             border-bottom: 2px solid var(--light);
         }
-
         .btn-print {
             display: inline-flex;
             align-items: center;
@@ -374,37 +382,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             transition: all 0.2s;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
-
-        .btn-print:hover {
-            background: #e2e8f0;
-            color: #0f172a;
-            border-color: #94a3b8;
-            transform: translateY(-1px);
-        }
-
-        .btn-print:active {
-            transform: translateY(0);
-        }
-
-        .btn-print-primary {
-            background: #0d6efd;
-            color: #ffffff;
-            border-color: #0d6efd;
-        }
-
-        .btn-print-primary:hover {
-            background: #0b5ed7;
-            color: #ffffff;
-            border-color: #0a58ca;
-        }
-
+        .btn-print:hover { background: #e2e8f0; color: #0f172a; border-color: #94a3b8; transform: translateY(-1px); }
+        .btn-print:active { transform: translateY(0); }
+        .btn-print-primary { background: #0d6efd; color: #ffffff; border-color: #0d6efd; }
+        .btn-print-primary:hover { background: #0b5ed7; color: #ffffff; border-color: #0a58ca; }
         .kpi-section {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 16px;
             margin-bottom: 24px;
         }
-
         .kpi-card {
             background: white;
             padding: 20px;
@@ -413,39 +400,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             transition: all 0.3s;
         }
-
-        .kpi-card:hover {
-            border-color: var(--primary);
-            box-shadow: 0 4px 8px rgba(57, 135, 229, 0.1);
-        }
-
-        .kpi-label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 8px;
-            font-weight: 500;
-            text-transform: uppercase;
-        }
-
-        .kpi-value {
-            font-size: 32px;
-            font-weight: bold;
-            color: var(--dark);
-            margin-bottom: 4px;
-        }
-
-        .kpi-percent {
-            font-size: 12px;
-            color: #999;
-        }
-
+        .kpi-card:hover { border-color: var(--primary); box-shadow: 0 4px 8px rgba(57, 135, 229, 0.1); }
+        .kpi-label { font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 500; text-transform: uppercase; }
+        .kpi-value { font-size: 32px; font-weight: bold; color: var(--dark); margin-bottom: 4px; }
+        .kpi-percent { font-size: 12px; color: #999; }
         .grid2 {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 24px;
             margin-bottom: 24px;
         }
-
         .card {
             background: white;
             padding: 24px;
@@ -454,13 +418,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             margin-bottom: 24px;
         }
-
         .payment-card {
             border: 2px solid var(--primary);
             box-shadow: 0 4px 12px rgba(57, 135, 229, 0.12);
             background: #ffffff;
         }
-
         .payment-header {
             display: flex;
             justify-content: space-between;
@@ -471,7 +433,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-bottom: 2px solid var(--light);
             margin-bottom: 20px;
         }
-
         .payment-badge-status {
             background: #e7f3ff;
             color: #0d6efd;
@@ -481,7 +442,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-weight: 700;
             letter-spacing: 0.5px;
         }
-
         .card-title {
             font-size: 18px;
             font-weight: 600;
@@ -489,79 +449,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             padding-bottom: 12px;
             border-bottom: 2px solid var(--light);
         }
-
-        .contract-stat {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            font-size: 13px;
-        }
-
-        .contract-label {
-            color: #666;
-        }
-
-        .contract-value {
-            font-weight: 600;
-            color: var(--dark);
-        }
-
-        .progress-container {
-            margin-bottom: 16px;
-        }
-
-        .progress-label {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 6px;
-            font-size: 12px;
-            color: #666;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 8px;
-            background: #e9ecef;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--info), var(--success));
-            border-radius: 4px;
-            transition: width 0.3s;
-        }
-
-        .chart-wrapper {
-            position: relative;
-            height: 320px;
-            margin: 20px 0;
-        }
-
-        .filter-section {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .filter-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .filter-label {
-            font-weight: 600;
-            font-size: 13px;
-            color: #666;
-            display: block;
-            width: 100%;
-            margin-bottom: 4px;
-        }
-
+        .contract-stat { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 13px; }
+        .contract-label { color: #666; }
+        .contract-value { font-weight: 600; color: var(--dark); }
+        .progress-container { margin-bottom: 16px; }
+        .progress-label { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; color: #666; }
+        .progress-bar { width: 100%; height: 8px; background: #e9ecef; border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--info), var(--success)); border-radius: 4px; transition: width 0.3s; }
+        .chart-wrapper { position: relative; height: 320px; margin: 20px 0; }
+        .filter-section { display: flex; flex-direction: column; gap: 16px; }
+        .filter-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .filter-label { font-weight: 600; font-size: 13px; color: #666; display: block; width: 100%; margin-bottom: 4px; }
         .filter-chip {
             display: inline-block;
             padding: 6px 12px;
@@ -573,29 +471,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             transition: all 0.2s;
             user-select: none;
         }
-
-        .filter-chip:hover {
-            border-color: var(--primary);
-            background: var(--light);
-        }
-
-        .filter-chip.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        .filter-chip-pay {
-            border-color: #bee5eb;
-            background: #f8fbff;
-        }
-
-        .filter-chip-pay.active {
-            background: #0d6efd;
-            border-color: #0d6efd;
-            color: white;
-        }
-
+        .filter-chip:hover { border-color: var(--primary); background: var(--light); }
+        .filter-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .filter-chip-pay { border-color: #bee5eb; background: #f8fbff; }
+        .filter-chip-pay.active { background: #0d6efd; border-color: #0d6efd; color: white; }
         .filter-input {
             padding: 8px 12px;
             border: 1px solid var(--border);
@@ -605,60 +484,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             max-width: 100%;
             background: white;
         }
-
-        .filter-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(57, 135, 229, 0.1);
-        }
-
-        .table-wrapper {
-            overflow-x: auto;
-            margin-top: 16px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-
-        thead {
-            background: var(--light);
-        }
-
-        th {
-            padding: 12px;
-            text-align: left;
-            color: #666;
-            font-weight: 600;
-            border-bottom: 2px solid var(--border);
-        }
-
-        td {
-            padding: 12px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        tfoot td {
-            padding: 14px 12px;
-            font-weight: 700;
-            border-top: 2px solid #333;
-            background: #f1f5f9;
-        }
-
-        tbody tr:hover {
-            background: var(--light);
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-
+        .filter-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(57, 135, 229, 0.1); }
+        .table-wrapper { overflow-x: auto; margin-top: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead { background: var(--light); }
+        th { padding: 12px; text-align: left; color: #666; font-weight: 600; border-bottom: 2px solid var(--border); }
+        td { padding: 12px; border-bottom: 1px solid var(--border); }
+        tfoot td { padding: 14px 12px; font-weight: 700; border-top: 2px solid #333; background: #f1f5f9; }
+        tbody tr:hover { background: var(--light); }
+        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
         .status-concluido { background: #d4edda; color: #155724; }
         .status-em-execução, .status-em-execucao { background: #d1ecf1; color: #0c5460; }
         .status-paralisado { background: #f8d7da; color: #721c24; }
@@ -668,143 +502,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .status-planejamento { background: #d6d8db; color: #383d41; }
         .status-aguardando-aprovação, .status-aguardando-aprovacao { background: #ffe5d0; color: #a04000; }
         .status-sem-status { background: #e9ecef; color: #495057; }
-
-        .units-split-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            margin-top: 10px;
-        }
-
-        @media (max-width: 900px) {
-            .units-split-container {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .units-column {
-            background: #ffffff;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-            padding: 16px;
-        }
-
-        .units-column-sesi {
-            border-top: 4px solid #0d6efd;
-            background: #fbfdff;
-        }
-
-        .units-column-senai {
-            border-top: 4px solid #e65100;
-            background: #fffbf9;
-        }
-
-        .units-column-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-bottom: 12px;
-            margin-bottom: 14px;
-            border-bottom: 2px solid var(--border);
-        }
-
-        .units-column-title {
-            font-size: 16px;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
+        .units-split-container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 10px; }
+        @media (max-width: 900px) { .units-split-container { grid-template-columns: 1fr; } }
+        .units-column { background: #ffffff; border-radius: 10px; border: 1px solid var(--border); padding: 16px; }
+        .units-column-sesi { border-top: 4px solid #0d6efd; background: #fbfdff; }
+        .units-column-senai { border-top: 4px solid #e65100; background: #fffbf9; }
+        .units-column-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 2px solid var(--border); }
+        .units-column-title { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
         .units-column-title.sesi { color: #0d6efd; }
         .units-column-title.senai { color: #e65100; }
-
-        .units-column-subtotal {
-            font-size: 12px;
-            font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 20px;
-        }
-
-        .units-column-subtotal.sesi {
-            background: #e7f3ff;
-            color: #0a58ca;
-        }
-
-        .units-column-subtotal.senai {
-            background: #fff0e6;
-            color: #c44000;
-        }
-
-        .unit-card {
-            padding: 14px 16px;
-            background: white;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .unit-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-        }
-
-        .unit-card-sesi {
-            border-left: 4px solid #0d6efd;
-        }
-
-        .unit-card-senai {
-            border-left: 4px solid #e65100;
-        }
-
-        .unit-card-name {
-            font-weight: 700;
-            color: #212529;
-            margin-bottom: 10px;
-            font-size: 13px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .unit-card-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-        }
-
-        .unit-card-label {
-            font-size: 11px;
-            color: #6c757d;
-            margin-bottom: 2px;
-            text-transform: uppercase;
-            font-weight: 600;
-        }
-
-        .unit-card-value {
-            font-weight: 700;
-            color: #212529;
-            font-size: 18px;
-            line-height: 1;
-        }
-
-        .unit-card-value-right {
-            font-weight: 700;
-            font-size: 14px;
-        }
-
+        .units-column-subtotal { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+        .units-column-subtotal.sesi { background: #e7f3ff; color: #0a58ca; }
+        .units-column-subtotal.senai { background: #fff0e6; color: #c44000; }
+        .unit-card { padding: 14px 16px; background: white; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: transform 0.2s, box-shadow 0.2s; }
+        .unit-card:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+        .unit-card-sesi { border-left: 4px solid #0d6efd; }
+        .unit-card-senai { border-left: 4px solid #e65100; }
+        .unit-card-name { font-weight: 700; color: #212529; margin-bottom: 10px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .unit-card-info { display: flex; justify-content: space-between; align-items: flex-end; }
+        .unit-card-label { font-size: 11px; color: #6c757d; margin-bottom: 2px; text-transform: uppercase; font-weight: 600; }
+        .unit-card-value { font-weight: 700; color: #212529; font-size: 18px; line-height: 1; }
+        .unit-card-value-right { font-weight: 700; font-size: 14px; }
         .unit-card-value-right.sesi { color: #0d6efd; }
         .unit-card-value-right.senai { color: #e65100; }
-
-        .footer {
-            margin-top: 40px;
-            padding: 20px;
-            text-align: center;
-            color: #999;
-            font-size: 12px;
-        }
-
+        .footer { margin-top: 40px; padding: 20px; text-align: center; color: #999; font-size: 12px; }
         .btn-action-copy {
             display: inline-flex;
             align-items: center;
@@ -820,17 +541,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             transition: all 0.2s;
             box-shadow: 0 2px 4px rgba(13, 110, 253, 0.2);
         }
-
-        .btn-action-copy:hover {
-            background: #0b5ed7;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(13, 110, 253, 0.3);
-        }
-
-        .btn-action-copy:active {
-            transform: translateY(0);
-        }
-
+        .btn-action-copy:hover { background: #0b5ed7; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(13, 110, 253, 0.3); }
+        .btn-action-copy:active { transform: translateY(0); }
         .copy-toast {
             display: inline-flex;
             align-items: center;
@@ -845,84 +557,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             opacity: 0;
             transition: opacity 0.3s ease;
         }
-
-        .copy-toast.show {
-            opacity: 1;
-        }
-
-        .print-header-stamp {
-            display: none;
-        }
-
+        .copy-toast.show { opacity: 1; }
+        .print-header-stamp { display: none; }
         @media print {
-            body { 
-                background: white !important;
-                color: #000 !important;
-            }
-
-            .no-print,
-            .btn-print,
-            .btn-action-copy,
-            .copy-toast,
-            .filter-section,
-            #filters,
-            #payCasaFilters,
-            #payMonthFilters,
-            #payStatusFilters,
-            #listStatusFilter,
-            .filter-input {
-                display: none !important;
-            }
-
-            .print-header-stamp {
-                display: block !important;
-                margin-bottom: 18px;
-                padding-bottom: 12px;
-                border-bottom: 2px solid #333;
-            }
-
-            .print-header-stamp h2 {
-                font-size: 18px;
-                color: #111;
-                margin: 0 0 4px 0;
-            }
-
-            .print-header-stamp p {
-                font-size: 12px;
-                color: #555;
-                margin: 0;
-            }
-
-            /* Quando o usuário imprime um painel específico */
-            body.is-printing-panel .container > *:not(.target-print-active) {
-                display: none !important;
-            }
-
-            body.is-printing-panel .target-print-active {
-                display: block !important;
-                width: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                border: none !important;
-                box-shadow: none !important;
-            }
-
-            .card, .kpi-card {
-                box-shadow: none !important;
-                border: 1px solid #ccc !important;
-                page-break-inside: avoid;
-            }
-
-            table {
-                page-break-inside: auto;
-            }
-
-            tr {
-                page-break-inside: avoid;
-                page-break-after: auto;
-            }
+            body { background: white !important; color: #000 !important; }
+            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, .filter-input { display: none !important; }
+            .print-header-stamp { display: block !important; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #333; }
+            .print-header-stamp h2 { font-size: 18px; color: #111; margin: 0 0 4px 0; }
+            .print-header-stamp p { font-size: 12px; color: #555; margin: 0; }
+            body.is-printing-panel .container > *:not(.target-print-active) { display: none !important; }
+            body.is-printing-panel .target-print-active { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; border: none !important; box-shadow: none !important; }
+            .card, .kpi-card { box-shadow: none !important; border: 1px solid #ccc !important; page-break-inside: avoid; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
         }
-
         @media (max-width: 768px) {
             .grid2 { grid-template-columns: 1fr; }
             .kpi-section { grid-template-columns: repeat(2, 1fr); }
@@ -931,13 +579,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
     <div class="container">
+        <!-- Header Geral -->
         <div class="header">
             <div>
                 <h1>📊 Painel de Manutenção Predial & Liberação de Pagamentos</h1>
                 <p>SESI e SENAI — Acompanhamento de Chamados, Emissão de NFE e Gestão Orçamentária</p>
             </div>
             <div class="no-print">
-                <button class="btn-print btn-print-primary" onclick="imprimirRelatorioGeral()" title="Imprime ou gera PDF de todo o painel consolidado">
+                <button class="btn-print btn-print-primary" onclick="imprimirRelatorioGeral()" title="Imprime todo o painel consolidado">
                     🖨️ Imprimir Relatório Completo
                 </button>
             </div>
@@ -994,9 +643,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div id="unitLegendBottom"></div>
         </div>
 
-        <!-- ======================================================= -->
-        <!-- PAINEL: CONTROLE DE PAGAMENTO / LIBERAÇÃO DE NFE        -->
-        <!-- ======================================================= -->
+        <!-- Painel de Liberação de Pagamentos -->
         <div class="card payment-card" id="painelPagamentos">
             <div class="payment-header">
                 <div>
@@ -1041,7 +688,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Filtro de Entidade / CNPJ, Mês de Emissão e Status -->
+            <!-- Filtros de Entidade e Mês -->
             <div class="no-print" style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
                 <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
                     🏛️ Filtrar por Entidade / CNPJ de Faturamento (Casa):
@@ -1080,32 +727,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </table>
             </div>
 
-            <!-- Faixa de Resumo do Fechamento de Faturamento -->
+            <!-- Faixa de Resumo do Fechamento -->
             <div id="paySummaryFooter" style="margin-top: 18px; padding: 14px 20px; background: #e8f4fd; border-radius: 8px; border-left: 5px solid #0d6efd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <div id="paySummaryFooterText" style="font-size: 14px; font-weight: 600; color: #0a58ca;">
-                    Fechamento de Faturamento
-                </div>
-                <div id="paySummaryFooterVal" style="font-size: 18px; font-weight: 800; color: #0ca30c;">
-                    R$ 0,00
-                </div>
+                <div id="paySummaryFooterText" style="font-size: 14px; font-weight: 600; color: #0a58ca;">Fechamento de Faturamento</div>
+                <div id="paySummaryFooterVal" style="font-size: 18px; font-weight: 800; color: #0ca30c;">R$ 0,00</div>
             </div>
 
             <!-- Botão de Cópia Única para E-mail -->
             <div class="no-print" style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                    <button class="btn-action-copy" onclick="copiarTabelaEmail()" title="Copia apenas as O.S. liberadas para emissão de NF-e e formata para colar no e-mail ou Excel">
+                    <button class="btn-action-copy" onclick="copiarTabelaEmail()" title="Copia apenas as O.S. liberadas para emissão de NF-e formatadas para colar no e-mail">
                         📋 Copiar Tabela p/ E-mail
                     </button>
                 </div>
-                <div id="copyToast" class="copy-toast">
-                    ✅ Tabela copiada! Pressione Ctrl + V no seu e-mail.
-                </div>
+                <div id="copyToast" class="copy-toast">✅ Tabela copiada! Pressione Ctrl + V no seu e-mail.</div>
             </div>
         </div>
 
-        <!-- ======================================================= -->
-        <!-- TABELA COMPLETA DE CHAMADOS GERAL                       -->
-        <!-- ======================================================= -->
+        <!-- Lista Completa de Chamados -->
         <div class="card" id="painelChamados">
             <div class="card-title-bar">
                 <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📋 Lista Completa de Chamados</div>
@@ -1117,7 +756,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div class="filter-group" id="listStatusFilter"></div>
             </div>
 
-            <!-- Controles de Busca: O.S. e Unidade -->
             <div class="no-print" style="margin-bottom: 16px; display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 200px;">
                     <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #666;">🔍 Buscar por O.S.</label>
@@ -1394,7 +1032,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function renderPaymentMonthFilters() {
-            // Utiliza apenas os meses reais existentes e preenchidos na planilha
             let mesesValidos = DATA.meses_existentes || [];
             if (mesesValidos.length === 0) {
                 mesesValidos = [...new Set(state.tickets.map(t => t.mes_emissao))]
@@ -1526,7 +1163,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             document.getElementById('payTableBody').innerHTML = rowsHTML;
 
-            // Linha Final de Totalização (tfoot)
             const footHTML = `
                 <tr>
                     <td colspan="4" style="font-size: 13px; text-transform: uppercase; color: #1e293b;">
@@ -1604,8 +1240,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <tbody>
             `;
 
-            let plain = `RELAÇÃO DE SERVIÇOS LIBERADOS PARA EMISSÃO DE NF-E\nEntidade: ${casaTxt} | Competência: ${mesTxt}\n\n`;
-            plain += `O.S\tNR\tCasa\tUnidade\tDescrição\tCompetência\tStatus Liberação\tValor Autorizado\n`;
+            let plain = `RELAÇÃO DE SERVIÇOS LIBERADOS PARA EMISSÃO DE NF-E\\nEntidade: ${casaTxt} | Competência: ${mesTxt}\\n\\n`;
+            plain += `O.S\\tNR\\tCasa\\tUnidade\\tDescrição\\tCompetência\\tStatus Liberação\\tValor Autorizado\\n`;
 
             liberados.forEach((t, i) => {
                 const bg = i % 2 === 0 ? '#ffffff' : '#f8f9fa';
@@ -1627,7 +1263,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </tr>
                 `;
 
-                plain += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
+                plain += `${t.os}\\t${t.nr}\\t${t.casa}\\t${t.unidade}\\t${t.descricao}\\t${t.mes_emissao}\\tLIBERADO P/ NFE\\tR$ ${fmt(t.valor)}\\n`;
             });
 
             html += `
@@ -1641,7 +1277,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </table>
                 </div>
             `;
-            plain += `\nVALOR TOTAL AUTORIZADO: R$ ${fmt(valLiberado)}\n`;
+            plain += `\\nVALOR TOTAL AUTORIZADO: R$ ${fmt(valLiberado)}\\n`;
 
             try {
                 if (navigator.clipboard && window.ClipboardItem) {
@@ -1677,11 +1313,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const el = document.getElementById(elementId);
             if (!el) return;
 
-            // Remove marcações anteriores se houver
             document.querySelectorAll('.target-print-active').forEach(n => n.classList.remove('target-print-active'));
             document.querySelectorAll('.print-header-stamp').forEach(n => n.remove());
 
-            // Adiciona cabeçalho elegante de impressão exclusivo para a folha
             const stamp = document.createElement('div');
             stamp.className = 'print-header-stamp';
             stamp.innerHTML = `
@@ -1802,7 +1436,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         function renderCharts() {
             const filtered = getFiltered();
 
-            // Status Doughnut Chart
             const statusCounts = {};
             filtered.forEach(t => {
                 statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
@@ -1832,7 +1465,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             });
 
-            // Unit Bar Chart
             const unitData = {};
             filtered.forEach(t => {
                 if (!unitData[t.unidade]) {
@@ -1954,7 +1586,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             let layoutHTML = legendaHTML + `
                 <div class="units-split-container">
-                    <!-- Coluna SESI (Esquerda / Azul) -->
                     <div class="units-column units-column-sesi">
                         <div class="units-column-header">
                             <div class="units-column-title sesi">
@@ -1969,7 +1600,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </div>
                     </div>
 
-                    <!-- Coluna SENAI (Direita / Laranja) -->
                     <div class="units-column units-column-senai">
                         <div class="units-column-header">
                             <div class="units-column-title senai">
@@ -2003,9 +1633,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     return a.unidade.localeCompare(b.unidade) || a.os - b.os;
                 })
                 .map(t => {
-                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\\s+/g, '-').replace(/[^\\w-]/g, '');
                     
-                    // Coluna de Dias em Aberto (padrão dia/mês/ano sem números negativos)
                     let diasHTML = '';
                     if (t.dias_abertos !== null) {
                         let cor = '#0ca30c';
@@ -2022,7 +1651,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         diasHTML = `<td style="text-align: center; color: #999;">-</td>`;
                     }
 
-                    // Coluna de Entrega de Orçamento computada na data previamente registrada
                     let orcHTML = '';
                     if (t.data_orcamento) {
                         const diasTxt = t.dias_orcamento !== null ? ` <span style="font-size: 11px; font-weight: 700; color: #0d6efd;">(${t.dias_orcamento}d)</span>` : '';
