@@ -614,12 +614,38 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             background: white;
         }
         .filter-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(57, 135, 229, 0.1); }
-        .table-wrapper { overflow-x: auto; margin-top: 16px; }
+        .table-wrapper { 
+            overflow-x: auto; 
+            max-height: 620px;
+            overflow-y: auto;
+            margin-top: 16px; 
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #ffffff;
+        }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         thead { background: var(--light); }
-        th { padding: 12px; text-align: left; color: #666; font-weight: 600; border-bottom: 2px solid var(--border); }
+        th { 
+            padding: 12px; 
+            text-align: left; 
+            color: #666; 
+            font-weight: 600; 
+            border-bottom: 2px solid var(--border); 
+            position: sticky;
+            top: 0;
+            background: #f1f5f9;
+            z-index: 5;
+        }
         td { padding: 12px; border-bottom: 1px solid var(--border); }
-        tfoot td { padding: 14px 12px; font-weight: 700; border-top: 2px solid #333; background: #f1f5f9; }
+        tfoot td { 
+            padding: 14px 12px; 
+            font-weight: 700; 
+            border-top: 2px solid #333; 
+            background: #f1f5f9; 
+            position: sticky;
+            bottom: 0;
+            z-index: 5;
+        }
         tbody tr:hover { background: var(--light); }
         .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
         .status-concluido { background: #d4edda; color: #155724; }
@@ -692,6 +718,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             body { background: white !important; color: #000 !important; }
             .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, .filter-input, .nav-bar, .portal-cards-grid, .btn-return-home { display: none !important; }
             .tab-view { display: block !important; }
+            .table-wrapper { max-height: none !important; overflow: visible !important; border: none !important; }
+            th, tfoot td { position: static !important; }
             .print-header-stamp { display: block !important; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #333; }
             .print-header-stamp h2 { font-size: 18px; color: #111; margin: 0 0 4px 0; }
             .print-header-stamp p { font-size: 12px; color: #555; margin: 0; }
@@ -1056,16 +1084,49 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 setTimeout(() => {
                     if (window.statusChartInstance) window.statusChartInstance.resize();
                     if (window.unitChartInstance) window.unitChartInstance.resize();
+                    updateIframeHeight();
                 }, 50);
             } else if (viewName === 'pagamentos') {
                 document.getElementById('viewPagamentos').classList.add('active');
                 document.getElementById('btnTabPay').classList.add('active');
                 renderPaymentPanel();
+                setTimeout(updateIframeHeight, 50);
             } else if (viewName === 'chamados') {
                 document.getElementById('viewChamados').classList.add('active');
                 document.getElementById('btnTabList').classList.add('active');
                 renderTable();
+                setTimeout(updateIframeHeight, 50);
             }
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function updateIframeHeight() {
+            try {
+                const bodyH = Math.max(
+                    document.body.scrollHeight,
+                    document.documentElement.scrollHeight,
+                    document.body.offsetHeight
+                );
+                window.parent.postMessage({
+                    type: "streamlit:setFrameHeight",
+                    height: bodyH + 20
+                }, "*");
+            } catch (e) {}
+        }
+
+        function init() {
+            state.tickets = DATA.chamados;
+            document.getElementById('updateTime').textContent = new Date().toLocaleString('pt-BR');
+            document.getElementById('totalTickets').textContent = state.tickets.length;
+            renderFilters();
+            renderListStatusFilter();
+            renderListUnitFilter();
+            renderPaymentCasaFilters();
+            renderPaymentMonthFilters();
+            render();
+            setTimeout(updateIframeHeight, 150);
+        }
 
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -1954,6 +2015,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             renderCharts();
             renderPaymentPanel();
             renderTable();
+            setTimeout(updateIframeHeight, 100);
         }
 
         init();
@@ -1965,7 +2027,7 @@ st.subheader("📊 Dashboard Interativo")
 
 html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
 
-st.components.v1.html(html_content, height=4400, scrolling=True)
+st.components.v1.html(html_content, height=1350, scrolling=True)
 
 st.subheader("📥 Download dos Arquivos")
 col1, col2 = st.columns(2)
