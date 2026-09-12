@@ -340,16 +340,91 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             align-items: center;
             flex-wrap: wrap;
             gap: 16px;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
             padding: 20px;
             background: white;
             border-radius: 8px;
             border-left: 4px solid var(--primary);
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-        .header h1 { font-size: 26px; margin: 0; }
+        .header h1 { font-size: 24px; margin: 0; }
         .header p { color: #666; margin: 0; font-size: 14px; }
         
+        /* Barra de Navegação por Abas */
+        .nav-tabs-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .nav-tab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background: #ffffff;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        }
+        .nav-tab-btn:hover { background: #f1f5f9; color: #0f172a; border-color: #94a3b8; }
+        .nav-tab-btn.active {
+            background: #0d6efd;
+            color: #ffffff;
+            border-color: #0d6efd;
+            box-shadow: 0 2px 6px rgba(13, 110, 253, 0.25);
+        }
+
+        /* Cards de Atalho do Painel Inicial */
+        .portal-cards-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-bottom: 24px;
+        }
+        @media (max-width: 768px) {
+            .portal-cards-grid { grid-template-columns: 1fr; }
+        }
+        .portal-card {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px 22px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .portal-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+        }
+        .portal-card-pay { border-left: 5px solid #0d6efd; }
+        .portal-card-list { border-left: 5px solid #10b981; }
+
+        .btn-back-nav {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #f8fafc;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-back-nav:hover { background: #e2e8f0; color: #0f172a; }
+
         .card-title-bar {
             display: flex;
             justify-content: space-between;
@@ -395,7 +470,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         .kpi-card:hover { border-color: var(--primary); box-shadow: 0 4px 8px rgba(57, 135, 229, 0.1); }
         .kpi-label { font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 500; text-transform: uppercase; }
-        .kpi-value { font-size: 32px; font-weight: bold; color: var(--dark); margin-bottom: 4px; }
+        .kpi-value { font-size: 30px; font-weight: bold; color: var(--dark); margin-bottom: 4px; }
         .kpi-percent { font-size: 12px; color: #999; }
         
         .grid2 {
@@ -482,18 +557,41 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         .filter-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(57, 135, 229, 0.1); }
         
+        /* Tabela com rolagem vertical suave e cabeçalho sticky */
         .table-wrapper { 
+            max-height: 520px;
+            overflow-y: auto;
             overflow-x: auto; 
             margin-top: 16px; 
             border: 1px solid var(--border);
             border-radius: 8px;
             background: #ffffff;
+            position: relative;
         }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        thead { background: var(--light); }
-        th { padding: 12px; text-align: left; color: #666; font-weight: 600; border-bottom: 2px solid var(--border); }
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #f1f5f9;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            padding: 12px;
+            text-align: left;
+            color: #475569;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border);
+        }
         td { padding: 12px; border-bottom: 1px solid var(--border); }
-        tfoot td { padding: 14px 12px; font-weight: 700; border-top: 2px solid #333; background: #f8fafc; }
+        tfoot td {
+            position: sticky;
+            bottom: 0;
+            z-index: 10;
+            padding: 14px 12px;
+            font-weight: 700;
+            border-top: 2px solid #333;
+            background: #f8fafc;
+            box-shadow: 0 -1px 3px rgba(0,0,0,0.05);
+        }
         tbody tr:hover { background: var(--light); }
         
         .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
@@ -570,12 +668,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         
         @media print {
             body { background: white !important; color: #000 !important; }
-            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, .filter-input { display: none !important; }
+            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav { display: none !important; }
+            .tab-view { display: block !important; }
             .table-wrapper { max-height: none !important; overflow: visible !important; border: none !important; }
             .print-header-stamp { display: block !important; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #333; }
             .print-header-stamp h2 { font-size: 18px; color: #111; margin: 0 0 4px 0; }
             .print-header-stamp p { font-size: 12px; color: #555; margin: 0; }
-            body.is-printing-panel .container > *:not(.target-print-active) { display: none !important; }
+            body.is-printing-panel .container > *:not(.target-print-active),
+            body.is-printing-panel .tab-view > *:not(.target-print-active) { display: none !important; }
             body.is-printing-panel .target-print-active { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; border: none !important; box-shadow: none !important; }
             .card, .kpi-card { box-shadow: none !important; border: 1px solid #ccc !important; page-break-inside: avoid; }
             table { page-break-inside: auto; }
@@ -602,209 +702,273 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- KPIs Gerais -->
-        <div class="kpi-section" id="kpis"></div>
-
-        <!-- Saldo em Contrato + Tempo Médio em Aberto -->
-        <div class="grid2" id="painelContratosPrazos">
-            <div class="card" style="margin-bottom: 0;">
-                <div class="card-title-bar">
-                    <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">💰 Saldo em Contrato</div>
-                    <button class="btn-print no-print" onclick="imprimirPainel('painelContratosPrazos', 'Saldos em Contrato e Tempo Médio')">🖨️ Imprimir</button>
-                </div>
-                <div id="contracts"></div>
-            </div>
-
-            <div class="card" style="margin-bottom: 0;">
-                <div class="card-title-bar">
-                    <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">⏱️ Tempo Médio em Aberto</div>
-                    <button class="btn-print no-print" onclick="imprimirPainel('painelContratosPrazos', 'Saldos em Contrato e Tempo Médio')">🖨️ Imprimir</button>
-                </div>
-                <div id="tempoAberto"></div>
-            </div>
-        </div>
-
-        <!-- Distribuição de Status -->
-        <div class="card" id="painelStatus">
-            <div class="card-title-bar">
-                <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📈 Distribuição de Status</div>
-                <button class="btn-print no-print" onclick="imprimirPainel('painelStatus', 'Distribuição de Status dos Chamados')">🖨️ Imprimir Gráfico</button>
-            </div>
-            <div class="chart-wrapper">
-                <canvas id="statusChart" role="img" aria-label="Distribuição de chamados por status"></canvas>
-            </div>
-        </div>
-
-        <!-- Filtros Globais Interativos -->
-        <div class="card no-print">
-            <div class="card-title">🔍 Filtros Interativos Globais</div>
-            <div class="filter-section" id="filters"></div>
-        </div>
-
-        <!-- Chamados por Unidade (SESI à esquerda e SENAI à direita de A a Z) -->
-        <div class="card" id="painelUnidades">
-            <div class="card-title-bar">
-                <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">🏢 Chamados por Unidade (com investimento)</div>
-                <button class="btn-print no-print" onclick="imprimirPainel('painelUnidades', 'Investimento e Chamados por Unidade (SESI e SENAI)')">🖨️ Imprimir Unidades</button>
-            </div>
-            <div class="chart-wrapper" style="height: 500px; margin-bottom: 20px;">
-                <canvas id="unitChart" role="img" aria-label="Distribuição de chamados por unidade"></canvas>
-            </div>
-            <div id="unitLegendBottom"></div>
+        <!-- Barra de Navegação por Abas -->
+        <div class="nav-tabs-bar no-print">
+            <button class="nav-tab-btn active" id="nav-inicial" onclick="switchTab('inicial')">
+                📊 Painel Inicial (Visão Geral)
+            </button>
+            <button class="nav-tab-btn" id="nav-pagamentos" onclick="switchTab('pagamentos')">
+                💳 Controle de Pagamentos & NF-e
+            </button>
+            <button class="nav-tab-btn" id="nav-chamados" onclick="switchTab('chamados')">
+                📋 Lista Completa de Chamados
+            </button>
         </div>
 
         <!-- ======================================================= -->
-        <!-- PAINEL DE CONTROLE DE PAGAMENTOS & LIBERAÇÃO PARA NF-e -->
+        <!-- ABA 1: PAINEL INICIAL (VISÃO GERAL)                     -->
         <!-- ======================================================= -->
-        <div class="card payment-card" id="painelPagamentos">
-            <div class="payment-header">
-                <div>
-                    <h2 style="font-size: 20px; font-weight: 700; color: #0d6efd; display: flex; align-items: center; gap: 8px;">
-                        💳 Controle de Pagamentos & Liberação para NFE
-                    </h2>
-                    <p style="font-size: 13px; color: #666; margin-top: 4px;">
-                        Valide os serviços concluídos por mês e CNPJ (SESI/SENAI) para autorizar a empresa a emitir a Nota Fiscal
-                    </p>
+        <div class="tab-view" id="view-inicial" style="display: block;">
+            
+            <!-- Cards de Acesso Rápido aos Painéis -->
+            <div class="portal-cards-grid no-print">
+                <div class="portal-card portal-card-pay" onclick="switchTab('pagamentos')">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <div style="font-size: 32px;">💳</div>
+                        <div>
+                            <div style="font-size: 16px; font-weight: 700; color: #0d6efd;">Controle de Pagamentos & NF-e</div>
+                            <div style="font-size: 12px; color: #64748b;">Conferência por Mês e CNPJ (SESI/SENAI) para autorizar emissão de Nota Fiscal</div>
+                        </div>
+                    </div>
+                    <button class="btn-print btn-print-primary" style="pointer-events: none;">Acessar Faturamento ➔</button>
                 </div>
-                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                    <button class="btn-print no-print" onclick="imprimirPainel('painelPagamentos', 'Controle de Pagamentos e Liberação para NF-e')" title="Imprimir este painel de faturamento">
-                        🖨️ Imprimir Faturamento
-                    </button>
-                    <div class="payment-badge-status" id="paySummaryBadge">
-                        Carregando resumo financeiro...
+
+                <div class="portal-card portal-card-list" onclick="switchTab('chamados')">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <div style="font-size: 32px;">📋</div>
+                        <div>
+                            <div style="font-size: 16px; font-weight: 700; color: #10b981;">Lista Completa de Chamados</div>
+                            <div style="font-size: 12px; color: #64748b;">Tabela com busca por O.S., filtro por Unidade SESI/SENAI e acompanhamento de prazos</div>
+                        </div>
+                    </div>
+                    <button class="btn-print" style="pointer-events: none; border-color: #10b981; color: #10b981;">Ver Chamados ➔</button>
+                </div>
+            </div>
+
+            <!-- KPIs Gerais -->
+            <div class="kpi-section" id="kpis"></div>
+
+            <!-- Saldo em Contrato + Tempo Médio em Aberto -->
+            <div class="grid2" id="painelContratosPrazos">
+                <div class="card" style="margin-bottom: 0;">
+                    <div class="card-title-bar">
+                        <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">💰 Saldo em Contrato</div>
+                        <button class="btn-print no-print" onclick="imprimirPainel('painelContratosPrazos', 'Saldos em Contrato e Tempo Médio')">🖨️ Imprimir</button>
+                    </div>
+                    <div id="contracts"></div>
+                </div>
+
+                <div class="card" style="margin-bottom: 0;">
+                    <div class="card-title-bar">
+                        <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">⏱️ Tempo Médio em Aberto</div>
+                        <button class="btn-print no-print" onclick="imprimirPainel('painelContratosPrazos', 'Saldos em Contrato e Tempo Médio')">🖨️ Imprimir</button>
+                    </div>
+                    <div id="tempoAberto"></div>
+                </div>
+            </div>
+
+            <!-- Distribuição de Status -->
+            <div class="card" id="painelStatus">
+                <div class="card-title-bar">
+                    <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📈 Distribuição de Status</div>
+                    <button class="btn-print no-print" onclick="imprimirPainel('painelStatus', 'Distribuição de Status dos Chamados')">🖨️ Imprimir Gráfico</button>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="statusChart" role="img" aria-label="Distribuição de chamados por status"></canvas>
+                </div>
+            </div>
+
+            <!-- Filtros Globais Interativos -->
+            <div class="card no-print">
+                <div class="card-title">🔍 Filtros Interativos Globais</div>
+                <div class="filter-section" id="filters"></div>
+            </div>
+
+            <!-- Chamados por Unidade (SESI à esquerda e SENAI à direita de A a Z) -->
+            <div class="card" id="painelUnidades">
+                <div class="card-title-bar">
+                    <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">🏢 Chamados por Unidade (com investimento)</div>
+                    <button class="btn-print no-print" onclick="imprimirPainel('painelUnidades', 'Investimento e Chamados por Unidade (SESI e SENAI)')">🖨️ Imprimir Unidades</button>
+                </div>
+                <div class="chart-wrapper" style="height: 500px; margin-bottom: 20px;">
+                    <canvas id="unitChart" role="img" aria-label="Distribuição de chamados por unidade"></canvas>
+                </div>
+                <div id="unitLegendBottom"></div>
+            </div>
+        </div>
+
+        <!-- ======================================================= -->
+        <!-- ABA 2: PAINEL DE CONTROLE DE PAGAMENTOS                -->
+        <!-- ======================================================= -->
+        <div class="tab-view" id="view-pagamentos" style="display: none;">
+            <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+                <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
+            </div>
+
+            <div class="card payment-card" id="painelPagamentos">
+                <div class="payment-header">
+                    <div>
+                        <h2 style="font-size: 20px; font-weight: 700; color: #0d6efd; display: flex; align-items: center; gap: 8px;">
+                            💳 Controle de Pagamentos & Liberação para NFE
+                        </h2>
+                        <p style="font-size: 13px; color: #666; margin-top: 4px;">
+                            Valide os serviços concluídos por mês e CNPJ (SESI/SENAI) para autorizar a empresa a emitir a Nota Fiscal
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn-print no-print" onclick="imprimirPainel('painelPagamentos', 'Controle de Pagamentos e Liberação para NF-e')" title="Imprimir este painel de faturamento">
+                            🖨️ Imprimir Faturamento
+                        </button>
+                        <div class="payment-badge-status" id="paySummaryBadge">
+                            Carregando resumo financeiro...
+                        </div>
                     </div>
                 </div>
+
+                <!-- Mini KPIs de Pagamento -->
+                <div class="kpi-section" style="margin-bottom: 20px;">
+                    <div class="kpi-card" style="border-left: 4px solid var(--success);">
+                        <div class="kpi-label">Liberado para Emitir NFE</div>
+                        <div class="kpi-value" id="payValLiberado" style="color: var(--success); font-size: 26px;">R$ 0,00</div>
+                        <div class="kpi-percent" id="payCountLiberado">0 O.S. prontas para faturar</div>
+                    </div>
+                    <div class="kpi-card" style="border-left: 4px solid var(--primary);">
+                        <div class="kpi-label">Em Medição / Andamento</div>
+                        <div class="kpi-value" id="payValMedicao" style="color: var(--primary); font-size: 26px;">R$ 0,00</div>
+                        <div class="kpi-percent" id="payCountMedicao">0 O.S. em andamento</div>
+                    </div>
+                    <div class="kpi-card" style="border-left: 4px solid var(--danger);">
+                        <div class="kpi-label">Bloqueado / Paralisado</div>
+                        <div class="kpi-value" id="payValBloqueado" style="color: var(--danger); font-size: 26px;">R$ 0,00</div>
+                        <div class="kpi-percent" id="payCountBloqueado">0 O.S. paralisadas</div>
+                    </div>
+                    <div class="kpi-card" style="border-left: 4px solid #6c757d;">
+                        <div class="kpi-label">Total do Filtro de Pagamento</div>
+                        <div class="kpi-value" id="payValTotal" style="font-size: 26px;">R$ 0,00</div>
+                        <div class="kpi-percent" id="payCountTotal">0 chamados filtrados</div>
+                    </div>
+                </div>
+
+                <!-- Filtros de Entidade e Mês -->
+                <div class="no-print" style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
+                    <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
+                        🏛️ Filtrar por Entidade / CNPJ de Faturamento (Casa):
+                    </div>
+                    <div class="filter-group" id="payCasaFilters" style="margin-bottom: 14px;"></div>
+
+                    <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
+                        📅 Filtrar por Mês de Emissão / Competência da Nota:
+                    </div>
+                    <div class="filter-group" id="payMonthFilters"></div>
+
+                    <div style="font-weight: 600; font-size: 13px; color: #333; margin-top: 14px; margin-bottom: 8px;">
+                        📌 Filtrar por Status de Faturamento:
+                    </div>
+                    <div class="filter-group" id="payStatusFilters"></div>
+                </div>
+
+                <!-- Tabela de Liberação de Pagamentos com Scroll Interno -->
+                <div class="table-wrapper">
+                    <table id="payTable">
+                        <thead>
+                            <tr style="background: #e9ecef;">
+                                <th>O.S</th>
+                                <th>NR</th>
+                                <th>Entidade / CNPJ</th>
+                                <th>Unidade</th>
+                                <th>Descrição</th>
+                                <th>Mês Competência</th>
+                                <th>Status O.S</th>
+                                <th>Liberação p/ NFE</th>
+                                <th style="text-align: right;">Valor a Faturar</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payTableBody"></tbody>
+                        <tfoot id="payTableFoot"></tfoot>
+                    </table>
+                </div>
+
+                <!-- Faixa de Resumo do Fechamento -->
+                <div id="paySummaryFooter" style="margin-top: 18px; padding: 14px 20px; background: #e8f4fd; border-radius: 8px; border-left: 5px solid #0d6efd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div id="paySummaryFooterText" style="font-size: 14px; font-weight: 600; color: #0a58ca;">Fechamento de Faturamento</div>
+                    <div id="paySummaryFooterVal" style="font-size: 18px; font-weight: 800; color: #0ca30c;">R$ 0,00</div>
+                </div>
+
+                <!-- Botão de Cópia Única para E-mail -->
+                <div class="no-print" style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <button class="btn-action-copy" onclick="copiarTabelaEmail()" title="Copia apenas as O.S. liberadas para emissão de NF-e formatadas para colar no e-mail">
+                            📋 Copiar Tabela p/ E-mail
+                        </button>
+                    </div>
+                    <div id="copyToast" class="copy-toast">✅ Tabela copiada! Pressione Ctrl + V no seu e-mail.</div>
+                </div>
             </div>
 
-            <!-- Mini KPIs de Pagamento -->
-            <div class="kpi-section" style="margin-bottom: 20px;">
-                <div class="kpi-card" style="border-left: 4px solid var(--success);">
-                    <div class="kpi-label">Liberado para Emitir NFE</div>
-                    <div class="kpi-value" id="payValLiberado" style="color: var(--success); font-size: 26px;">R$ 0,00</div>
-                    <div class="kpi-percent" id="payCountLiberado">0 O.S. prontas para faturar</div>
-                </div>
-                <div class="kpi-card" style="border-left: 4px solid var(--primary);">
-                    <div class="kpi-label">Em Medição / Andamento</div>
-                    <div class="kpi-value" id="payValMedicao" style="color: var(--primary); font-size: 26px;">R$ 0,00</div>
-                    <div class="kpi-percent" id="payCountMedicao">0 O.S. em andamento</div>
-                </div>
-                <div class="kpi-card" style="border-left: 4px solid var(--danger);">
-                    <div class="kpi-label">Bloqueado / Paralisado</div>
-                    <div class="kpi-value" id="payValBloqueado" style="color: var(--danger); font-size: 26px;">R$ 0,00</div>
-                    <div class="kpi-percent" id="payCountBloqueado">0 O.S. paralisadas</div>
-                </div>
-                <div class="kpi-card" style="border-left: 4px solid #6c757d;">
-                    <div class="kpi-label">Total do Filtro de Pagamento</div>
-                    <div class="kpi-value" id="payValTotal" style="font-size: 26px;">R$ 0,00</div>
-                    <div class="kpi-percent" id="payCountTotal">0 chamados filtrados</div>
-                </div>
-            </div>
-
-            <!-- Filtros de Entidade e Mês -->
-            <div class="no-print" style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
-                <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
-                    🏛️ Filtrar por Entidade / CNPJ de Faturamento (Casa):
-                </div>
-                <div class="filter-group" id="payCasaFilters" style="margin-bottom: 14px;"></div>
-
-                <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
-                    📅 Filtrar por Mês de Emissão / Competência da Nota:
-                </div>
-                <div class="filter-group" id="payMonthFilters"></div>
-
-                <div style="font-weight: 600; font-size: 13px; color: #333; margin-top: 14px; margin-bottom: 8px;">
-                    📌 Filtrar por Status de Faturamento:
-                </div>
-                <div class="filter-group" id="payStatusFilters"></div>
-            </div>
-
-            <!-- Tabela de Liberação de Pagamentos -->
-            <div class="table-wrapper">
-                <table id="payTable">
-                    <thead>
-                        <tr style="background: #e9ecef;">
-                            <th>O.S</th>
-                            <th>NR</th>
-                            <th>Entidade / CNPJ</th>
-                            <th>Unidade</th>
-                            <th>Descrição</th>
-                            <th>Mês Competência</th>
-                            <th>Status O.S</th>
-                            <th>Liberação p/ NFE</th>
-                            <th style="text-align: right;">Valor a Faturar</th>
-                        </tr>
-                    </thead>
-                    <tbody id="payTableBody"></tbody>
-                    <tfoot id="payTableFoot"></tfoot>
-                </table>
-            </div>
-
-            <!-- Faixa de Resumo do Fechamento -->
-            <div id="paySummaryFooter" style="margin-top: 18px; padding: 14px 20px; background: #e8f4fd; border-radius: 8px; border-left: 5px solid #0d6efd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <div id="paySummaryFooterText" style="font-size: 14px; font-weight: 600; color: #0a58ca;">Fechamento de Faturamento</div>
-                <div id="paySummaryFooterVal" style="font-size: 18px; font-weight: 800; color: #0ca30c;">R$ 0,00</div>
-            </div>
-
-            <!-- Botão de Cópia Única para E-mail -->
-            <div class="no-print" style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                    <button class="btn-action-copy" onclick="copiarTabelaEmail()" title="Copia apenas as O.S. liberadas para emissão de NF-e formatadas para colar no e-mail">
-                        📋 Copiar Tabela p/ E-mail
-                    </button>
-                </div>
-                <div id="copyToast" class="copy-toast">✅ Tabela copiada! Pressione Ctrl + V no seu e-mail.</div>
+            <div class="no-print" style="margin-top: 14px; text-align: center;">
+                <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
             </div>
         </div>
 
         <!-- ======================================================= -->
-        <!-- LISTA COMPLETA DE CHAMADOS                             -->
+        <!-- ABA 3: LISTA COMPLETA DE CHAMADOS                       -->
         <!-- ======================================================= -->
-        <div class="card" id="painelChamados">
-            <div class="card-title-bar">
-                <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📋 Lista Completa de Chamados</div>
-                <button class="btn-print no-print" onclick="imprimirPainel('painelChamados', 'Lista Completa de Chamados')">🖨️ Imprimir Lista</button>
-            </div>
-            
-            <div class="no-print" style="margin-bottom: 16px;">
-                <div style="font-weight: 600; font-size: 13px; color: #666; margin-bottom: 10px;">Filtrar por Status na Tabela</div>
-                <div class="filter-group" id="listStatusFilter"></div>
+        <div class="tab-view" id="view-chamados" style="display: none;">
+            <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+                <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
             </div>
 
-            <div class="no-print" style="margin-bottom: 16px; display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;">
-                <div style="flex: 1; min-width: 200px;">
-                    <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #666;">🔍 Buscar por O.S.</label>
-                    <input type="text" class="filter-input" id="osSearch" placeholder="Ex: 194876" oninput="filterByOS(this.value)" />
+            <div class="card" id="painelChamados">
+                <div class="card-title-bar">
+                    <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📋 Lista Completa de Chamados</div>
+                    <button class="btn-print no-print" onclick="imprimirPainel('painelChamados', 'Lista Completa de Chamados')">🖨️ Imprimir Lista</button>
+                </div>
+                
+                <div class="no-print" style="margin-bottom: 16px;">
+                    <div style="font-weight: 600; font-size: 13px; color: #666; margin-bottom: 10px;">Filtrar por Status na Tabela</div>
+                    <div class="filter-group" id="listStatusFilter"></div>
                 </div>
 
-                <div style="flex: 1.5; min-width: 260px;">
-                    <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #666;">🏢 Filtrar por Unidade</label>
-                    <select class="filter-input" id="unitSelect" onchange="filterByListUnit(this.value)" style="cursor: pointer;">
-                        <option value="">Carregando unidades...</option>
-                    </select>
+                <div class="no-print" style="margin-bottom: 16px; display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #666;">🔍 Buscar por O.S.</label>
+                        <input type="text" class="filter-input" id="osSearch" placeholder="Ex: 194876" oninput="filterByOS(this.value)" />
+                    </div>
+
+                    <div style="flex: 1.5; min-width: 260px;">
+                        <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #666;">🏢 Filtrar por Unidade</label>
+                        <select class="filter-input" id="unitSelect" onchange="filterByListUnit(this.value)" style="cursor: pointer;">
+                            <option value="">Carregando unidades...</option>
+                        </select>
+                    </div>
+
+                    <div style="font-size: 13px; color: #666; padding-bottom: 8px;">
+                        Exibindo <strong id="ticketCount">0</strong> de <strong id="totalTickets">0</strong> chamados
+                    </div>
                 </div>
 
-                <div style="font-size: 13px; color: #666; padding-bottom: 8px;">
-                    Exibindo <strong id="ticketCount">0</strong> de <strong id="totalTickets">0</strong> chamados
+                <div class="table-wrapper">
+                    <table id="ticketTable">
+                        <thead>
+                            <tr>
+                                <th>O.S</th>
+                                <th>NR</th>
+                                <th>Unidade</th>
+                                <th>Descrição</th>
+                                <th>Status</th>
+                                <th>Data Envio (DD/MM/AAAA)</th>
+                                <th>Entrega Orçamento</th>
+                                <th>Dias Abertos</th>
+                                <th style="text-align: right;">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="table-wrapper">
-                <table id="ticketTable">
-                    <thead>
-                        <tr>
-                            <th>O.S</th>
-                            <th>NR</th>
-                            <th>Unidade</th>
-                            <th>Descrição</th>
-                            <th>Status</th>
-                            <th>Data Envio (DD/MM/AAAA)</th>
-                            <th>Entrega Orçamento</th>
-                            <th>Dias Abertos</th>
-                            <th style="text-align: right;">Valor</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody"></tbody>
-                </table>
+            <div class="no-print" style="margin-top: 14px; text-align: center;">
+                <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
             </div>
         </div>
 
@@ -833,6 +997,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             filters: { status: [], unidade: [], os: '', listStatus: '', listUnit: '' },
             payFilters: { mes: '', statusPagamento: '', casa: '' }
         };
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-view').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.nav-tab-btn').forEach(btn => btn.classList.remove('active'));
+
+            const targetView = document.getElementById('view-' + tabId);
+            if (targetView) targetView.style.display = 'block';
+
+            const targetNav = document.getElementById('nav-' + tabId);
+            if (targetNav) targetNav.classList.add('active');
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            if (tabId === 'inicial' && window.statusChartInstance && window.unitChartInstance) {
+                window.statusChartInstance.resize();
+                window.unitChartInstance.resize();
+            }
+        }
 
         function init() {
             state.tickets = DATA.chamados;
@@ -1327,6 +1509,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const el = document.getElementById(elementId);
             if (!el) return;
 
+            const parentView = el.closest('.tab-view');
+            if (parentView) parentView.style.display = 'block';
+
             document.querySelectorAll('.target-print-active').forEach(n => n.classList.remove('target-print-active'));
             document.querySelectorAll('.print-header-stamp').forEach(n => n.remove());
 
@@ -1717,7 +1902,8 @@ st.subheader("📊 Dashboard Interativo")
 
 html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
 
-st.components.v1.html(html_content, height=3100, scrolling=False)
+# Altura calibrada para a extensão real de cada aba com rolagem ativada, eliminando o vácuo de tela
+st.components.v1.html(html_content, height=1400, scrolling=True)
 
 st.subheader("📥 Download dos Arquivos")
 col1, col2 = st.columns(2)
