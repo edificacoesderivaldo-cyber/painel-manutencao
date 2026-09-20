@@ -530,6 +530,46 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .mini-kpi-med.primary { border-left-color: #0284c7; }
         .mini-kpi-med.warning { border-left-color: #f59e0b; }
         .mini-kpi-med.dark { border-left-color: #475569; }
+        .mini-kpi-med.indigo { border-left-color: #6366f1; }
+        .mini-kpi-med.amber { border-left-color: #d97706; }
+        .mini-kpi-med.emerald { border-left-color: #059669; }
+
+        .previsao-box {
+            background: #f8fafc;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 18px 20px;
+            margin-bottom: 22px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        }
+        .previsao-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .btn-inspect-toggle {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .btn-inspect-toggle:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
 
         .filter-chip-med {
             padding: 7px 14px;
@@ -1021,7 +1061,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
 
                 <!-- KPIs Financeiros da Medição e Contrato -->
-                <div class="kpi-section" style="margin-bottom: 20px;">
+                <div style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">
+                    📋 Medições Efetivadas & Faturamento Homologado (Status Atual):
+                </div>
+                <div class="kpi-section" style="margin-bottom: 18px;">
                     <div class="mini-kpi-med success">
                         <div class="kpi-label" style="color: #059669; font-weight: 700;">Valor da Medição Selecionada</div>
                         <div class="kpi-value" id="medKpiValor" style="color: #10b981; font-size: 26px;">R$ 0,00</div>
@@ -1044,6 +1087,92 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <div class="kpi-label" style="color: #b45309; font-weight: 700;">Saldo Disponível em Contrato</div>
                         <div class="kpi-value" id="medKpiSaldo" style="color: #d97706; font-size: 26px;">R$ 1.440.000,00</div>
                         <div class="kpi-percent" id="medKpiSaldoPct" style="color: #b45309; font-weight: 600;">100% ainda disponível</div>
+                    </div>
+                </div>
+
+                <!-- Painel de Previsão de Medições Futuras & Saldo Estimado -->
+                <div class="previsao-box">
+                    <div class="previsao-header">
+                        <div style="font-size: 13px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                            🛡️ GESTÃO DE RISCO: PREVISÃO DE MEDIÇÕES FUTURAS & SALDO ESTIMADO (<span id="medPrevCasaLabel" style="color: #0284c7;">SENAI</span>)
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button type="button" class="btn-inspect-toggle no-print" onclick="toggleInspecaoPrevisao()" id="btnToggleInspect">
+                                👁️ Inspecionar O.S. Futuras (0)
+                            </button>
+                            <div id="medRiscoBadge" style="font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 14px; background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;">
+                                🟢 SALDO ESTIMADO SEGURO
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3 Cards de Projeção Financeira -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 16px;">
+                        <div class="mini-kpi-med indigo">
+                            <div class="kpi-label" style="color: #4f46e5; font-weight: 700;">Previsão em Investimentos (O.S. Futuras)</div>
+                            <div class="kpi-value" id="medKpiPrevisao" style="color: #4338ca; font-size: 25px;">R$ 0,00</div>
+                            <div class="kpi-percent" id="medKpiPrevisaoSub" style="color: #4f46e5; font-weight: 600;">0 O.S. em andamento/orçadas</div>
+                        </div>
+
+                        <div class="mini-kpi-med amber">
+                            <div class="kpi-label" style="color: #b45309; font-weight: 700;">Total Geral Comprometido (Medido + Previsto)</div>
+                            <div class="kpi-value" id="medKpiComprometido" style="color: #d97706; font-size: 25px;">R$ 0,00</div>
+                            <div class="kpi-percent" id="medKpiComprometidoSub" style="color: #b45309; font-weight: 600;">0% do contrato consumido</div>
+                        </div>
+
+                        <div class="mini-kpi-med emerald" id="medCardSaldoEstimado">
+                            <div class="kpi-label" style="color: #059669; font-weight: 700;">Saldo Estimado em Contrato (Margem Real Livre)</div>
+                            <div class="kpi-value" id="medKpiSaldoEstimado" style="color: #047857; font-size: 25px;">R$ 0,00</div>
+                            <div class="kpi-percent" id="medKpiSaldoEstimadoSub" style="color: #059669; font-weight: 600;">Margem segura p/ novas programações</div>
+                        </div>
+                    </div>
+
+                    <!-- Barra de Consumo do Teto Contratual -->
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 6px;">
+                            <span>Consumo do Teto Contratual (R$ 1.440.000,00):</span>
+                            <span id="medBarraComprometidoLabel">0% comprometido (Medições + Previsão)</span>
+                        </div>
+                        <div style="width: 100%; height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden; display: flex;">
+                            <div id="medBarraMedido" style="height: 100%; background: #0284c7; width: 0%; transition: width 0.4s;" title="Faturado / Liberado"></div>
+                            <div id="medBarraPrevisto" style="height: 100%; background: #f59e0b; width: 0%; transition: width 0.4s;" title="Previsão de O.S. Futuras"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #64748b; margin-top: 6px;">
+                            <span style="display: inline-flex; align-items: center; gap: 5px;">
+                                <span style="width: 8px; height: 8px; background: #0284c7; border-radius: 2px; display: inline-block;"></span> 
+                                Liberado/Medido: <strong id="medLegendaMedido" style="color: #0284c7;">R$ 0,00</strong>
+                            </span>
+                            <span style="display: inline-flex; align-items: center; gap: 5px;">
+                                <span style="width: 8px; height: 8px; background: #f59e0b; border-radius: 2px; display: inline-block;"></span> 
+                                Previsão Futura: <strong id="medLegendaPrevisto" style="color: #d97706;">R$ 0,00</strong>
+                            </span>
+                            <span style="display: inline-flex; align-items: center; gap: 5px;">
+                                <span style="width: 8px; height: 8px; background: #10b981; border-radius: 2px; display: inline-block;"></span> 
+                                Margem Livre Estimada: <strong id="medLegendaSaldoEstimado" style="color: #059669;">R$ 0,00</strong>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Gaveta de Inspeção das O.S. Futuras -->
+                    <div id="medInspecaoBox" style="display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed #cbd5e1;">
+                        <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                            <span>🔍 O.S. com Investimentos em Andamento / Previsão Futura:</span>
+                            <span style="font-size: 11px; color: #64748b;">(Itens orçados ainda não liberados p/ NFE)</span>
+                        </div>
+                        <div style="max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
+                            <table style="font-size: 11px; width: 100%; border-collapse: collapse;">
+                                <thead style="background: #f1f5f9; position: sticky; top: 0;">
+                                    <tr>
+                                        <th style="padding: 6px 10px;">O.S</th>
+                                        <th style="padding: 6px 10px;">Unidade</th>
+                                        <th style="padding: 6px 10px;">Descrição</th>
+                                        <th style="padding: 6px 10px;">Status O.S</th>
+                                        <th style="padding: 6px 10px; text-align: right;">Previsão (R$)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="medInspecaoBody"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
@@ -1644,14 +1773,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             renderMedicoesPanel();
         }
 
+        function toggleInspecaoPrevisao() {
+            const box = document.getElementById('medInspecaoBox');
+            const btn = document.getElementById('btnToggleInspect');
+            if (!box) return;
+            if (box.style.display === 'none' || box.style.display === '') {
+                box.style.display = 'block';
+                btn.innerHTML = '✖️ Ocultar O.S. Futuras';
+            } else {
+                box.style.display = 'none';
+                btn.innerHTML = `👁️ Inspecionar O.S. Futuras (${window.lastCountPrevisao || 0})`;
+            }
+        }
+
         function renderMedicoesPanel() {
-            // Filtrar estritamente chamados LIBERADOS P/ NFE
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const casaAtual = state.medFilters.casa;
+
+            // 1. Filtrar estritamente chamados LIBERADOS P/ NFE da Casa
             const liberadosBase = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
+            const casaList = liberadosBase.filter(t => t.casa === casaAtual);
 
-            // Filtrar pela casa selecionada
-            const casaList = liberadosBase.filter(t => t.casa === state.medFilters.casa);
-
-            // Total anual da casa selecionada
+            // Total anual efetivamente medido/faturado da casa selecionada
             const totalAnualCasa = casaList.reduce((acc, t) => acc + (t.valor || 0), 0);
             const countAnualCasa = casaList.length;
 
@@ -1664,25 +1807,143 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const totalMedicao = medList.reduce((acc, t) => acc + (t.valor || 0), 0);
             const countMedicao = medList.length;
 
-            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            // 2. Cálculos da Previsão de Investimentos Futuros (O.S. em andamento / orçadas com valor > 0 não concluídas)
+            const ticketsCasa = state.tickets.filter(t => t.casa === casaAtual);
+            const chamadosFuturos = ticketsCasa.filter(t => t.status_pagamento !== 'LIBERADO P/ NFE' && t.status !== 'CONCLUIDO' && (t.valor || 0) > 0);
+            const valorPrevisaoFutura = chamadosFuturos.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const countPrevisaoFutura = chamadosFuturos.length;
+            window.lastCountPrevisao = countPrevisaoFutura;
 
-            // Atualizar os 4 KPIs Superiores
+            // Chamados abertos sem valor registrado
+            const countSemValor = ticketsCasa.filter(t => t.status !== 'CONCLUIDO' && ((t.valor || 0) === 0)).length;
+
+            // 3. Teto, Total Comprometido e Saldo Estimado
+            const tetoContrato = 1440000.00;
+            const saldoContratoReal = Math.max(0, tetoContrato - totalAnualCasa);
+            const pctSaldoReal = ((saldoContratoReal / tetoContrato) * 100).toFixed(1);
+
+            const totalComprometido = totalAnualCasa + valorPrevisaoFutura;
+            const saldoEstimado = tetoContrato - totalComprometido;
+            const pctComprometido = Math.min(100, Math.max(0, (totalComprometido / tetoContrato) * 100)).toFixed(1);
+            const pctMedido = Math.min(100, Math.max(0, (totalAnualCasa / tetoContrato) * 100));
+            const pctPrevisto = Math.min(100 - pctMedido, Math.max(0, (valorPrevisaoFutura / tetoContrato) * 100));
+            const pctSaldoEstimado = ((saldoEstimado / tetoContrato) * 100).toFixed(1);
+
+            // 4. Atualizar os 4 KPIs Superiores Tradicionais
             document.getElementById('medKpiValor').textContent = `R$ ${fmt(totalMedicao)}`;
             const periodoLabelTxt = state.medFilters.periodo === 'ANUAL' ? 'no acumulado anual' : 'nesta medição mensal';
             document.getElementById('medKpiSub').textContent = `${countMedicao} O.S. liberadas ${periodoLabelTxt}`;
 
             document.getElementById('medKpiAnual').textContent = `R$ ${fmt(totalAnualCasa)}`;
-            document.getElementById('medKpiAnualSub').textContent = `${countAnualCasa} O.S. faturadas no exercício (${state.medFilters.casa})`;
-
-            const tetoContrato = 1440000.00;
-            const saldoContrato = Math.max(0, tetoContrato - totalAnualCasa);
-            const pctSaldo = ((saldoContrato / tetoContrato) * 100).toFixed(1);
+            document.getElementById('medKpiAnualSub').textContent = `${countAnualCasa} O.S. faturadas no exercício (${casaAtual})`;
 
             document.getElementById('medKpiTeto').textContent = `R$ ${fmt(tetoContrato)}`;
-            document.getElementById('medKpiSaldo').textContent = `R$ ${fmt(saldoContrato)}`;
-            document.getElementById('medKpiSaldoPct').textContent = `${pctSaldo}% disponível no teto homologado`;
+            document.getElementById('medKpiSaldo').textContent = `R$ ${fmt(saldoContratoReal)}`;
+            document.getElementById('medKpiSaldoPct').textContent = `${pctSaldoReal}% disponível no teto homologado`;
 
-            // Renderizar Linhas da Tabela (estilo idêntico à imagem de gerenciamento)
+            // 5. Atualizar o Bloco de Gestão de Risco e Previsão Futura
+            const labelCasaEl = document.getElementById('medPrevCasaLabel');
+            if (labelCasaEl) labelCasaEl.textContent = casaAtual;
+
+            document.getElementById('medKpiPrevisao').textContent = `R$ ${fmt(valorPrevisaoFutura)}`;
+            const subPrevisaoTxt = countSemValor > 0 
+                ? `${countPrevisaoFutura} O.S. orçadas (+${countSemValor} aguard. orçamento)`
+                : `${countPrevisaoFutura} O.S. orçadas em andamento`;
+            document.getElementById('medKpiPrevisaoSub').textContent = subPrevisaoTxt;
+
+            document.getElementById('medKpiComprometido').textContent = `R$ ${fmt(totalComprometido)}`;
+            document.getElementById('medKpiComprometidoSub').textContent = `${pctComprometido}% do teto consumido (Medido + Previsto)`;
+
+            const cardSaldoEstimado = document.getElementById('medCardSaldoEstimado');
+            const kpiSaldoEstimadoVal = document.getElementById('medKpiSaldoEstimado');
+            const kpiSaldoEstimadoSub = document.getElementById('medKpiSaldoEstimadoSub');
+            const badgeRisco = document.getElementById('medRiscoBadge');
+
+            kpiSaldoEstimadoVal.textContent = `R$ ${fmt(saldoEstimado)}`;
+
+            // Termômetro de Alerta Orçamentário
+            if (saldoEstimado < 0) {
+                kpiSaldoEstimadoVal.style.color = '#dc2626';
+                kpiSaldoEstimadoSub.innerHTML = `⚠️ <strong style="color: #dc2626;">ESTOURO PREVISTO:</strong> Excede o teto em R$ ${fmt(Math.abs(saldoEstimado))}`;
+                if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#dc2626';
+                if (badgeRisco) {
+                    badgeRisco.style.background = '#fee2e2';
+                    badgeRisco.style.color = '#b91c1c';
+                    badgeRisco.style.borderColor = '#fecaca';
+                    badgeRisco.textContent = '⛔ ESTOURO PROJETADO (CONTRATO ESGOTADO)';
+                }
+            } else if (saldoEstimado < 100000) {
+                kpiSaldoEstimadoVal.style.color = '#ea580c';
+                kpiSaldoEstimadoSub.innerHTML = `⚠️ <strong style="color: #ea580c;">MARGEM CRÍTICA:</strong> Apenas ${pctSaldoEstimado}% livre no teto`;
+                if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#ea580c';
+                if (badgeRisco) {
+                    badgeRisco.style.background = '#ffedd5';
+                    badgeRisco.style.color = '#c2410c';
+                    badgeRisco.style.borderColor = '#fed7aa';
+                    badgeRisco.textContent = '🔴 ALERTA CRÍTICO (LIMITE QUASE ESGOTADO)';
+                }
+            } else if (saldoEstimado < 300000) {
+                kpiSaldoEstimadoVal.style.color = '#d97706';
+                kpiSaldoEstimadoSub.innerHTML = `Margem de atenção: ${pctSaldoEstimado}% livre (${fmt(saldoEstimado)})`;
+                if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#f59e0b';
+                if (badgeRisco) {
+                    badgeRisco.style.background = '#fef3c7';
+                    badgeRisco.style.color = '#b45309';
+                    badgeRisco.style.borderColor = '#fde68a';
+                    badgeRisco.textContent = '🟡 ATENÇÃO AO SALDO ESTIMADO';
+                }
+            } else {
+                kpiSaldoEstimadoVal.style.color = '#047857';
+                kpiSaldoEstimadoSub.innerHTML = `Margem segura: ${pctSaldoEstimado}% livre (${fmt(saldoEstimado)})`;
+                if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#10b981';
+                if (badgeRisco) {
+                    badgeRisco.style.background = '#dcfce7';
+                    badgeRisco.style.color = '#15803d';
+                    badgeRisco.style.borderColor = '#bbf7d0';
+                    badgeRisco.textContent = '🟢 SALDO ESTIMADO SEGURO';
+                }
+            }
+
+            // Atualizar Barra Visual de Consumo Contratual
+            document.getElementById('medBarraComprometidoLabel').textContent = `${pctComprometido}% do teto consumido (R$ ${fmt(totalComprometido)} de R$ 1,44M)`;
+            document.getElementById('medBarraMedido').style.width = `${pctMedido}%`;
+            document.getElementById('medBarraPrevisto').style.width = `${pctPrevisto}%`;
+
+            document.getElementById('medLegendaMedido').textContent = `R$ ${fmt(totalAnualCasa)} (${pctMedido.toFixed(1)}%)`;
+            document.getElementById('medLegendaPrevisto').textContent = `R$ ${fmt(valorPrevisaoFutura)} (${pctPrevisto.toFixed(1)}%)`;
+            document.getElementById('medLegendaSaldoEstimado').textContent = `R$ ${fmt(saldoEstimado)} (${pctSaldoEstimado}%)`;
+
+            // Atualizar Botão e Tabela de Inspeção de O.S. Futuras
+            const btnInspect = document.getElementById('btnToggleInspect');
+            if (btnInspect) {
+                const boxInspect = document.getElementById('medInspecaoBox');
+                if (boxInspect && boxInspect.style.display !== 'none') {
+                    btnInspect.innerHTML = '✖️ Ocultar O.S. Futuras';
+                } else {
+                    btnInspect.innerHTML = `👁️ Inspecionar O.S. Futuras (${countPrevisaoFutura})`;
+                }
+            }
+
+            const inspecaoBody = document.getElementById('medInspecaoBody');
+            if (inspecaoBody) {
+                if (chamadosFuturos.length === 0) {
+                    inspecaoBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94a3b8;">Nenhuma O.S. orçada pendente para esta entidade.</td></tr>';
+                } else {
+                    inspecaoBody.innerHTML = chamadosFuturos
+                        .sort((a, b) => b.valor - a.valor)
+                        .map(t => `
+                            <tr>
+                                <td style="padding: 6px 10px; font-weight: 700; color: #4338ca;">#${t.os}</td>
+                                <td style="padding: 6px 10px; font-weight: 600;">${t.unidade}</td>
+                                <td style="padding: 6px 10px; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                                <td style="padding: 6px 10px;"><span style="font-size: 10px; font-weight: 700; background: #e0e7ff; color: #3730a3; padding: 2px 6px; border-radius: 4px;">${t.status}</span></td>
+                                <td style="padding: 6px 10px; text-align: right; font-weight: 700; color: #d97706;">R$ ${fmt(t.valor)}</td>
+                            </tr>
+                        `).join('');
+                }
+            }
+
+            // 6. Renderizar Linhas da Tabela Oficial de Medições (Itens Liberados p/ NFE)
             let rowsHTML = medList
                 .sort((a, b) => b.valor - a.valor)
                 .map(t => {
@@ -1725,7 +1986,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const footHTML = `
                 <tr>
                     <td colspan="4" style="color: #0f172a; font-size: 13px;">
-                        📌 TOTAL GERAL DA MEDIÇÃO: <span style="color: #0284c7; font-weight: 800;">${state.medFilters.casa} | ${periodoLabel}</span>
+                        📌 TOTAL GERAL DA MEDIÇÃO: <span style="color: #0284c7; font-weight: 800;">${casaAtual} | ${periodoLabel}</span>
                     </td>
                     <td colspan="4" style="text-align: right; color: #475569; font-size: 12px;">
                         Liberado para NFE: <strong style="color: #10b981;">R$ ${fmt(totalMedicao)} (${countMedicao} O.S.)</strong> &nbsp;|&nbsp; Total da Seleção (${countMedicao} O.S.):
@@ -1737,9 +1998,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             `;
             document.getElementById('medTableFoot').innerHTML = footHTML;
 
-            // Faixa Inferior de Resumo
+            // Faixa Inferior de Resumo com Alerta de Margem Livre
             document.getElementById('medRibbonText').innerHTML = `
-                🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>${state.medFilters.casa}</u> | Competência: <u>${periodoLabel}</u> | O.S. Aprovadas p/ Faturamento: <strong>${countMedicao} itens</strong>
+                🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>${casaAtual}</u> | Competência: <u>${periodoLabel}</u> | O.S. Faturadas: <strong>${countMedicao} itens</strong> &nbsp;|&nbsp; 🛡️ Margem Real Livre Restante: <strong style="color: #15803d;">R$ ${fmt(saldoEstimado)}</strong>
             `;
             document.getElementById('medRibbonVal').textContent = `Total Medição: R$ ${fmt(totalMedicao)}`;
         }
