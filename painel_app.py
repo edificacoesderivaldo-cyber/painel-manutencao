@@ -383,12 +383,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         /* Cards de Atalho do Painel Inicial */
         .portal-cards-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 18px;
             margin-bottom: 24px;
-        }
-        @media (max-width: 768px) {
-            .portal-cards-grid { grid-template-columns: 1fr; }
         }
         .portal-card {
             background: #ffffff;
@@ -396,8 +393,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-radius: 10px;
             padding: 18px 22px;
             display: flex;
+            flex-direction: column;
             justify-content: space-between;
-            align-items: center;
             box-shadow: 0 2px 4px rgba(0,0,0,0.04);
             cursor: pointer;
             transition: all 0.2s ease;
@@ -407,6 +404,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 6px 14px rgba(0,0,0,0.08);
         }
         .portal-card-pay { border-left: 5px solid #0d6efd; }
+        .portal-card-med { border-left: 5px solid #0284c7; }
         .portal-card-list { border-left: 5px solid #10b981; }
 
         .btn-back-nav {
@@ -511,6 +509,78 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-weight: 700;
             letter-spacing: 0.5px;
         }
+
+        .medicoes-card {
+            background: #ffffff;
+            border-radius: 10px;
+            border: 2px solid #0284c7;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.1);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .mini-kpi-med {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 14px 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+            border-left: 4px solid #cbd5e1;
+        }
+        .mini-kpi-med.success { border-left-color: #10b981; }
+        .mini-kpi-med.primary { border-left-color: #0284c7; }
+        .mini-kpi-med.warning { border-left-color: #f59e0b; }
+        .mini-kpi-med.dark { border-left-color: #475569; }
+
+        .filter-chip-med {
+            padding: 7px 14px;
+            background: white;
+            border: 1px solid #cbd5e1;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .filter-chip-med:hover { background: #e2e8f0; color: #0f172a; }
+        .filter-chip-med.active-sesi {
+            background: #0284c7;
+            color: white;
+            border-color: #0284c7;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
+        }
+        .filter-chip-med.active-senai {
+            background: #ea580c;
+            color: white;
+            border-color: #ea580c;
+            box-shadow: 0 2px 6px rgba(234, 88, 12, 0.25);
+        }
+        .filter-chip-med.active-anual {
+            background: #0f172a;
+            color: white;
+            border-color: #0f172a;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+        }
+
+        .summary-ribbon {
+            margin-top: 16px;
+            padding: 14px 18px;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .summary-ribbon .left { font-size: 13px; color: #166534; font-weight: 600; }
+        .summary-ribbon .right { font-size: 18px; font-weight: 800; color: #15803d; }
+
         .card-title {
             font-size: 18px;
             font-weight: 600;
@@ -557,7 +627,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         .filter-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(57, 135, 229, 0.1); }
         
-        /* Tabela com rolagem vertical suave e cabeçalho sticky */
         .table-wrapper { 
             max-height: 520px;
             overflow-y: auto;
@@ -668,7 +737,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         
         @media print {
             body { background: white !important; color: #000 !important; }
-            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav { display: none !important; }
+            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, #medCasaFilters, #medPeriodoFilters, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav { display: none !important; }
             .tab-view { display: block !important; }
             .table-wrapper { max-height: none !important; overflow: visible !important; border: none !important; }
             .print-header-stamp { display: block !important; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #333; }
@@ -677,13 +746,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             body.is-printing-panel .container > *:not(.target-print-active),
             body.is-printing-panel .tab-view > *:not(.target-print-active) { display: none !important; }
             body.is-printing-panel .target-print-active { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; border: none !important; box-shadow: none !important; }
-            .card, .kpi-card { box-shadow: none !important; border: 1px solid #ccc !important; page-break-inside: avoid; }
+            .card, .kpi-card, .medicoes-card { box-shadow: none !important; border: 1px solid #ccc !important; page-break-inside: avoid; }
             table { page-break-inside: auto; }
             tr { page-break-inside: avoid; page-break-after: auto; }
-        }
-        @media (max-width: 768px) {
-            .grid2 { grid-template-columns: 1fr; }
-            .kpi-section { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
@@ -710,6 +775,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <button class="nav-tab-btn" id="nav-pagamentos" onclick="switchTab('pagamentos')">
                 💳 Controle de Pagamentos & NF-e
             </button>
+            <button class="nav-tab-btn" id="nav-medicoes" onclick="switchTab('medicoes')">
+                📐 MEDIÇÕES (Controle Contratual)
+            </button>
             <button class="nav-tab-btn" id="nav-chamados" onclick="switchTab('chamados')">
                 📋 Lista Completa de Chamados
             </button>
@@ -730,7 +798,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             <div style="font-size: 12px; color: #64748b;">Conferência por Mês e CNPJ (SESI/SENAI) para autorizar emissão de Nota Fiscal</div>
                         </div>
                     </div>
-                    <button class="btn-print btn-print-primary" style="pointer-events: none;">Acessar Faturamento ➔</button>
+                    <button class="btn-print btn-print-primary" style="pointer-events: none; margin-top: 14px;">Acessar Faturamento ➔</button>
+                </div>
+
+                <div class="portal-card portal-card-med" onclick="switchTab('medicoes')">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <div style="font-size: 32px;">📐</div>
+                        <div>
+                            <div style="font-size: 16px; font-weight: 700; color: #0284c7;">Módulo MEDIÇÕES (Contrato)</div>
+                            <div style="font-size: 12px; color: #64748b;">Livro Oficial de Medições mensais e acumulado anual com saldo contratual</div>
+                        </div>
+                    </div>
+                    <button class="btn-print" style="pointer-events: none; margin-top: 14px; border-color: #0284c7; color: #0284c7;">Acessar Medições ➔</button>
                 </div>
 
                 <div class="portal-card portal-card-list" onclick="switchTab('chamados')">
@@ -741,7 +820,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             <div style="font-size: 12px; color: #64748b;">Tabela com busca por O.S., filtro por Unidade SESI/SENAI e acompanhamento de prazos</div>
                         </div>
                     </div>
-                    <button class="btn-print" style="pointer-events: none; border-color: #10b981; color: #10b981;">Ver Chamados ➔</button>
+                    <button class="btn-print" style="pointer-events: none; margin-top: 14px; border-color: #10b981; color: #10b981;">Ver Chamados ➔</button>
                 </div>
             </div>
 
@@ -801,8 +880,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- ABA 2: PAINEL DE CONTROLE DE PAGAMENTOS                -->
         <!-- ======================================================= -->
         <div class="tab-view" id="view-pagamentos" style="display: none;">
-            <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+            <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
+                <button class="btn-print" style="border-color: #0284c7; color: #0284c7;" onclick="switchTab('medicoes')">
+                    📐 Ir para Módulo MEDIÇÕES (Boletim Oficial) ➔
+                </button>
             </div>
 
             <div class="card payment-card" id="painelPagamentos">
@@ -911,7 +993,112 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <!-- ======================================================= -->
-        <!-- ABA 3: LISTA COMPLETA DE CHAMADOS                       -->
+        <!-- ABA 3: MÓDULO MEDIÇÕES (LIVRO OFICIAL DO CONTRATO)      -->
+        <!-- ======================================================= -->
+        <div class="tab-view" id="view-medicoes" style="display: none;">
+            <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+                <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
+            </div>
+
+            <div class="medicoes-card" id="painelMedicoes">
+                <div class="payment-header" style="border-bottom: 2px solid #e0f2fe;">
+                    <div>
+                        <h2 style="font-size: 22px; font-weight: 800; color: #0284c7; display: flex; align-items: center; gap: 10px;">
+                            📐 MEDIÇÕES — Controle de Medição Contratual
+                        </h2>
+                        <p style="font-size: 13px; color: #64748b; margin-top: 4px;">
+                            Livro Oficial de Medições: itens faturados (LIBERADO P/ NFE) com teto e saldo contratual de R$ 1.440.000,00
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn-print no-print" onclick="imprimirPainel('painelMedicoes', 'Boletim de Medição Contratual')" title="Imprimir Relatório Oficial de Medição">
+                            🖨️ Imprimir Medição
+                        </button>
+                        <div style="font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 6px 12px; border-radius: 20px; font-weight: 700;">
+                            Contrato: R$ 1.440.000,00 por Entidade
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KPIs Financeiros da Medição e Contrato -->
+                <div class="kpi-section" style="margin-bottom: 20px;">
+                    <div class="mini-kpi-med success">
+                        <div class="kpi-label" style="color: #059669; font-weight: 700;">Valor da Medição Selecionada</div>
+                        <div class="kpi-value" id="medKpiValor" style="color: #10b981; font-size: 26px;">R$ 0,00</div>
+                        <div class="kpi-percent" id="medKpiSub" style="color: #059669; font-weight: 600;">0 O.S. aprovadas</div>
+                    </div>
+
+                    <div class="mini-kpi-med primary">
+                        <div class="kpi-label" style="color: #0284c7; font-weight: 700;">Acumulado Anual Liberado</div>
+                        <div class="kpi-value" id="medKpiAnual" style="color: #0284c7; font-size: 26px;">R$ 0,00</div>
+                        <div class="kpi-percent" id="medKpiAnualSub" style="color: #0369a1; font-weight: 600;">0 O.S. no exercício</div>
+                    </div>
+
+                    <div class="mini-kpi-med dark">
+                        <div class="kpi-label" style="color: #475569; font-weight: 700;">Teto Contratual Total</div>
+                        <div class="kpi-value" id="medKpiTeto" style="color: #1e293b; font-size: 26px;">R$ 1.440.000,00</div>
+                        <div class="kpi-percent" style="color: #64748b;">Valor limite homologado</div>
+                    </div>
+
+                    <div class="mini-kpi-med warning">
+                        <div class="kpi-label" style="color: #b45309; font-weight: 700;">Saldo Disponível em Contrato</div>
+                        <div class="kpi-value" id="medKpiSaldo" style="color: #d97706; font-size: 26px;">R$ 1.440.000,00</div>
+                        <div class="kpi-percent" id="medKpiSaldoPct" style="color: #b45309; font-weight: 600;">100% ainda disponível</div>
+                    </div>
+                </div>
+
+                <!-- Painel de Filtros de Casa e Período -->
+                <div class="no-print" style="background: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+                    <div style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 8px; text-transform: uppercase;">
+                        🏛️ Entidade Contratual (Casa):
+                    </div>
+                    <div class="filter-group" id="medCasaFilters" style="margin-bottom: 14px;"></div>
+
+                    <div style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 8px; text-transform: uppercase;">
+                        📅 Medição Mensal de Competência ou Exercício Anual:
+                    </div>
+                    <div class="filter-group" id="medPeriodoFilters"></div>
+                </div>
+
+                <!-- Tabela de Medições Exata da Planilha de Gerenciamento -->
+                <div class="table-wrapper">
+                    <table id="medTable">
+                        <thead>
+                            <tr style="background: #f1f5f9;">
+                                <th>O.S</th>
+                                <th>NR</th>
+                                <th>Entidade / CNPJ</th>
+                                <th>Unidade</th>
+                                <th>Descrição</th>
+                                <th>Mês Competência</th>
+                                <th>Status O.S</th>
+                                <th>Liberação p/ NFE</th>
+                                <th style="text-align: right;">Valor a Faturar</th>
+                            </tr>
+                        </thead>
+                        <tbody id="medTableBody"></tbody>
+                        <tfoot id="medTableFoot"></tfoot>
+                    </table>
+                </div>
+
+                <!-- Faixa de Resumo da Medição -->
+                <div class="summary-ribbon">
+                    <div class="left" id="medRibbonText">
+                        🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>SESI</u> | Competência: <u>SETEMBRO</u> | Aptos para NFE: <strong>0 chamados</strong>
+                    </div>
+                    <div class="right" id="medRibbonVal">
+                        Total Medição Liberada: R$ 0,00
+                    </div>
+                </div>
+            </div>
+
+            <div class="no-print" style="margin-top: 14px; text-align: center;">
+                <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
+            </div>
+        </div>
+
+        <!-- ======================================================= -->
+        <!-- ABA 4: LISTA COMPLETA DE CHAMADOS                       -->
         <!-- ======================================================= -->
         <div class="tab-view" id="view-chamados" style="display: none;">
             <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
@@ -973,7 +1160,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <div class="footer">
-            <p>Atualizado em <span id="updateTime"></span> | Painel Integrado de Gestão Predial & Faturamento SESI/SENAI</p>
+            <p>Atualizado em <span id="updateTime"></span> | Painel Integrado de Gestão Predial, Medições & Faturamento SESI/SENAI</p>
         </div>
     </div>
 
@@ -995,7 +1182,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         let state = {
             tickets: [],
             filters: { status: [], unidade: [], os: '', listStatus: '', listUnit: '' },
-            payFilters: { mes: '', statusPagamento: '', casa: '' }
+            payFilters: { mes: '', statusPagamento: '', casa: '' },
+            medFilters: { casa: 'SESI', periodo: 'ANUAL' }
         };
 
         function switchTab(tabId) {
@@ -1020,11 +1208,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             state.tickets = DATA.chamados;
             document.getElementById('updateTime').textContent = new Date().toLocaleString('pt-BR');
             document.getElementById('totalTickets').textContent = state.tickets.length;
+
+            // Define período inicial padrão para Medições (último mês existente ou ANUAL)
+            if (DATA.meses_existentes && DATA.meses_existentes.length > 0) {
+                state.medFilters.periodo = DATA.meses_existentes[DATA.meses_existentes.length - 1];
+            } else {
+                state.medFilters.periodo = 'ANUAL';
+            }
+
             renderFilters();
             renderListStatusFilter();
             renderListUnitFilter();
             renderPaymentCasaFilters();
             renderPaymentMonthFilters();
+            renderMedicoesCasaFilters();
+            renderMedicoesPeriodoFilters();
             render();
         }
 
@@ -1382,6 +1580,168 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('paySummaryFooterVal').innerHTML = `
                 Total Faturamento Liberado: R$ ${fmt(valLiberado)}
             `;
+        }
+
+        function renderMedicoesCasaFilters() {
+            const opcoes = [
+                { id: 'SESI', label: '🔵 SESI (CNPJ SESI)' },
+                { id: 'SENAI', label: '🟠 SENAI (CNPJ SENAI)' }
+            ];
+
+            let html = '';
+            opcoes.forEach(op => {
+                const isActive = state.medFilters.casa === op.id;
+                const activeClass = isActive ? (op.id === 'SESI' ? ' active-sesi' : ' active-senai') : '';
+                html += `
+                    <span class="filter-chip-med${activeClass}" onclick="setMedCasa('${op.id}')">
+                        ${op.label}
+                    </span>
+                `;
+            });
+            document.getElementById('medCasaFilters').innerHTML = html;
+        }
+
+        function setMedCasa(casa) {
+            state.medFilters.casa = casa;
+            renderMedicoesCasaFilters();
+            renderMedicoesPeriodoFilters();
+            renderMedicoesPanel();
+        }
+
+        function renderMedicoesPeriodoFilters() {
+            let mesesValidos = DATA.meses_existentes || [];
+            if (mesesValidos.length === 0) {
+                mesesValidos = [...new Set(state.tickets.map(t => t.mes_emissao))]
+                    .filter(m => m && !['-', 'NÃO DEFINIDO', 'NAN', ''].includes(m.toUpperCase()));
+            }
+
+            const isSesi = state.medFilters.casa === 'SESI';
+            const activeMonthClass = isSesi ? ' active-sesi' : ' active-senai';
+
+            let html = '';
+            mesesValidos.forEach(m => {
+                const isActive = state.medFilters.periodo === m;
+                html += `
+                    <span class="filter-chip-med ${isActive ? activeMonthClass : ''}" onclick="setMedPeriodo('${m}')">
+                        📅 ${m}
+                    </span>
+                `;
+            });
+
+            const isAnual = state.medFilters.periodo === 'ANUAL';
+            html += `
+                <span class="filter-chip-med ${isAnual ? 'active-anual' : ''}" onclick="setMedPeriodo('ANUAL')">
+                    📊 ACUMULADO ANUAL (Todas as Medições)
+                </span>
+            `;
+
+            document.getElementById('medPeriodoFilters').innerHTML = html;
+        }
+
+        function setMedPeriodo(p) {
+            state.medFilters.periodo = p;
+            renderMedicoesPeriodoFilters();
+            renderMedicoesPanel();
+        }
+
+        function renderMedicoesPanel() {
+            // Filtrar estritamente chamados LIBERADOS P/ NFE
+            const liberadosBase = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
+
+            // Filtrar pela casa selecionada
+            const casaList = liberadosBase.filter(t => t.casa === state.medFilters.casa);
+
+            // Total anual da casa selecionada
+            const totalAnualCasa = casaList.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const countAnualCasa = casaList.length;
+
+            // Filtrar pelo período selecionado (mês ou anual)
+            let medList = casaList;
+            if (state.medFilters.periodo !== 'ANUAL') {
+                medList = casaList.filter(t => t.mes_emissao === state.medFilters.periodo);
+            }
+
+            const totalMedicao = medList.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const countMedicao = medList.length;
+
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+
+            // Atualizar os 4 KPIs Superiores
+            document.getElementById('medKpiValor').textContent = `R$ ${fmt(totalMedicao)}`;
+            const periodoLabelTxt = state.medFilters.periodo === 'ANUAL' ? 'no acumulado anual' : 'nesta medição mensal';
+            document.getElementById('medKpiSub').textContent = `${countMedicao} O.S. liberadas ${periodoLabelTxt}`;
+
+            document.getElementById('medKpiAnual').textContent = `R$ ${fmt(totalAnualCasa)}`;
+            document.getElementById('medKpiAnualSub').textContent = `${countAnualCasa} O.S. faturadas no exercício (${state.medFilters.casa})`;
+
+            const tetoContrato = 1440000.00;
+            const saldoContrato = Math.max(0, tetoContrato - totalAnualCasa);
+            const pctSaldo = ((saldoContrato / tetoContrato) * 100).toFixed(1);
+
+            document.getElementById('medKpiTeto').textContent = `R$ ${fmt(tetoContrato)}`;
+            document.getElementById('medKpiSaldo').textContent = `R$ ${fmt(saldoContrato)}`;
+            document.getElementById('medKpiSaldoPct').textContent = `${pctSaldo}% disponível no teto homologado`;
+
+            // Renderizar Linhas da Tabela (estilo idêntico à imagem de gerenciamento)
+            let rowsHTML = medList
+                .sort((a, b) => b.valor - a.valor)
+                .map(t => {
+                    const casaBadgeColor = t.casa === 'SESI' ? '#0284c7' : '#ea580c';
+                    const casaBadgeBg = t.casa === 'SESI' ? '#e0f2fe' : '#ffedd5';
+
+                    return `
+                        <tr>
+                            <td style="font-weight: 800; color: #0284c7;">#${t.os}</td>
+                            <td style="font-weight: 600;">${t.nr}</td>
+                            <td>
+                                <span style="display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: ${casaBadgeBg}; color: ${casaBadgeColor}; border: 1px solid ${casaBadgeColor}40;">
+                                    ${t.casa}
+                                </span>
+                            </td>
+                            <td><strong>${t.unidade}</strong></td>
+                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                            <td><span style="font-size: 12px; font-weight: 700; color: #475569;">${t.mes_emissao}</span></td>
+                            <td><span class="status-badge status-concluido">CONCLUIDO</span></td>
+                            <td>
+                                <span style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;">
+                                    ✅ LIBERADO P/ NFE
+                                </span>
+                            </td>
+                            <td style="text-align: right; font-weight: 800; color: #10b981; font-size: 13px;">
+                                R$ ${fmt(t.valor)}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+            if (medList.length === 0) {
+                rowsHTML = '<tr><td colspan="9" style="text-align:center; padding: 24px; color: #999;">Nenhuma Ordem de Serviço com status LIBERADO P/ NFE para a entidade e período selecionados.</td></tr>';
+            }
+
+            document.getElementById('medTableBody').innerHTML = rowsHTML;
+
+            // Rodapé Fixo da Tabela
+            const periodoLabel = state.medFilters.periodo === 'ANUAL' ? 'ACUMULADO ANUAL DO EXERCÍCIO' : state.medFilters.periodo;
+            const footHTML = `
+                <tr>
+                    <td colspan="4" style="color: #0f172a; font-size: 13px;">
+                        📌 TOTAL GERAL DA MEDIÇÃO: <span style="color: #0284c7; font-weight: 800;">${state.medFilters.casa} | ${periodoLabel}</span>
+                    </td>
+                    <td colspan="4" style="text-align: right; color: #475569; font-size: 12px;">
+                        Liberado para NFE: <strong style="color: #10b981;">R$ ${fmt(totalMedicao)} (${countMedicao} O.S.)</strong> &nbsp;|&nbsp; Total da Seleção (${countMedicao} O.S.):
+                    </td>
+                    <td style="text-align: right; font-size: 15px; color: #0f172a; background: #e2e8f0; font-weight: 800;">
+                        R$ ${fmt(totalMedicao)}
+                    </td>
+                </tr>
+            `;
+            document.getElementById('medTableFoot').innerHTML = footHTML;
+
+            // Faixa Inferior de Resumo
+            document.getElementById('medRibbonText').innerHTML = `
+                🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>${state.medFilters.casa}</u> | Competência: <u>${periodoLabel}</u> | O.S. Aprovadas p/ Faturamento: <strong>${countMedicao} itens</strong>
+            `;
+            document.getElementById('medRibbonVal').textContent = `Total Medição: R$ ${fmt(totalMedicao)}`;
         }
 
         function showCopyToast(msg) {
@@ -1890,6 +2250,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             renderTempoAberto();
             renderCharts();
             renderPaymentPanel();
+            renderMedicoesPanel();
             renderTable();
         }
 
