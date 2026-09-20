@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime
 
+# Configuração da página do Streamlit
 st.set_page_config(
     page_title="Painel de Manutenção Predial",
     page_icon="📊",
@@ -20,12 +21,14 @@ if not uploaded_file:
     st.info("👉 Clique no botão acima para fazer upload da sua planilha Excel com os chamados de manutenção.")
     st.stop()
 
+# Leitura da aba O.S
 try:
     df_os = pd.read_excel(uploaded_file, sheet_name='O.S', header=2)
 except Exception as e:
     st.error(f"❌ Erro ao carregar aba 'O.S': {e}")
     st.stop()
 
+# Leitura da aba SALDO (se existente)
 try:
     df_saldo = pd.read_excel(uploaded_file, sheet_name='SALDO', header=0)
 except Exception:
@@ -49,6 +52,7 @@ unidade_col = next((c for c in df_os.columns if 'UNIDADE' in c.upper()), 'UNIDAD
 df_os['STATUS'] = df_os[status_col].apply(norm_status)
 df_os['UNIDADE'] = df_os[unidade_col].apply(norm_unidade)
 
+# Identificação e conversão de valores e números de O.S
 valor_col = next((c for c in df_os.columns if 'VALOR' in c.upper() and 'INICIAL' in c.upper()), None)
 if valor_col:
     df_os[valor_col] = pd.to_numeric(df_os[valor_col], errors='coerce').fillna(0.0)
@@ -162,6 +166,7 @@ def obter_peso_mes(m_str):
 
     return ano * 100 + mes_num
 
+# Coleta exclusivamente os meses que existem na coluna de competência
 meses_existentes = []
 if mes_col:
     valores_mes = df_os[mes_col].dropna().astype(str).str.strip().unique()
@@ -510,6 +515,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             letter-spacing: 0.5px;
         }
 
+        /* Estilos do Módulo de Medições e Gestão de Risco */
         .medicoes-card {
             background: #ffffff;
             border-radius: 10px;
@@ -1051,6 +1057,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </p>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn-print no-print" onclick="copiarMedicaoEmail()" title="Copiar medição atual formatada para e-mail">
+                            📋 Copiar p/ E-mail
+                        </button>
+                        <button class="btn-print no-print" onclick="copiarMedicaoExcel()" title="Copiar medição atual em colunas para colar no Excel">
+                            📊 Copiar p/ Planilha
+                        </button>
                         <button class="btn-print no-print" onclick="imprimirPainel('painelMedicoes', 'Boletim de Medição Contratual')" title="Imprimir Relatório Oficial de Medição">
                             🖨️ Imprimir Medição
                         </button>
@@ -1219,6 +1231,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         Total Medição Liberada: R$ 0,00
                     </div>
                 </div>
+
+                <!-- Botões de Cópia da Medição Atual para E-mail e Planilha -->
+                <div class="no-print" style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #0284c7; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <button class="btn-action-copy" style="background: #0284c7;" onclick="copiarMedicaoEmail()" title="Copia a medição selecionada formatada com layout executivo para colar no e-mail (Outlook / Gmail)">
+                            📋 Copiar Tabela p/ E-mail
+                        </button>
+                        <button class="btn-action-copy" style="background: #059669;" onclick="copiarMedicaoExcel()" title="Copia a medição em colunas tabulares prontas para colar diretamente no Excel ou Google Sheets">
+                            📊 Copiar p/ Planilha (Excel / Sheets)
+                        </button>
+                    </div>
+                    <div id="copyToastMed" class="copy-toast">✅ Medição copiada! Pressione Ctrl + V no seu e-mail ou planilha.</div>
+                </div>
             </div>
 
             <div class="no-print" style="margin-top: 14px; text-align: center;">
@@ -1338,7 +1363,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('updateTime').textContent = new Date().toLocaleString('pt-BR');
             document.getElementById('totalTickets').textContent = state.tickets.length;
 
-            // Define período inicial padrão para Medições (último mês existente ou ANUAL)
             if (DATA.meses_existentes && DATA.meses_existentes.length > 0) {
                 state.medFilters.periodo = DATA.meses_existentes[DATA.meses_existentes.length - 1];
             } else {
@@ -2007,11 +2031,186 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         function showCopyToast(msg) {
             const toast = document.getElementById('copyToast');
+            if (!toast) return;
             toast.textContent = msg;
             toast.classList.add('show');
             setTimeout(() => {
                 toast.classList.remove('show');
             }, 4000);
+        }
+
+        function showCopyToastMed(msg) {
+            const toast = document.getElementById('copyToastMed');
+            if (!toast) return;
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 4000);
+        }
+
+        function getMedicaoAtualList() {
+            const casaAtual = state.medFilters.casa;
+            const liberadosBase = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
+            const casaList = liberadosBase.filter(t => t.casa === casaAtual);
+            if (state.medFilters.periodo !== 'ANUAL') {
+                return casaList.filter(t => t.mes_emissao === state.medFilters.periodo);
+            }
+            return casaList;
+        }
+
+        function executarCopiaClipboard(htmlContent, textContent, successMsg) {
+            try {
+                if (navigator.clipboard && window.ClipboardItem) {
+                    const blobHtml = new Blob([htmlContent], { type: 'text/html' });
+                    const blobText = new Blob([textContent], { type: 'text/plain' });
+                    const item = new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText });
+                    navigator.clipboard.write([item]).then(() => {
+                        showCopyToastMed(successMsg);
+                        showCopyToast(successMsg);
+                    }).catch(() => {
+                        copiarFallback(textContent);
+                        showCopyToastMed(successMsg);
+                    });
+                } else {
+                    copiarFallback(textContent);
+                    showCopyToastMed(successMsg);
+                }
+            } catch (err) {
+                copiarFallback(textContent);
+                showCopyToastMed(successMsg);
+            }
+        }
+
+        function copiarMedicaoEmail() {
+            const medList = getMedicaoAtualList();
+            const casaAtual = state.medFilters.casa;
+            const periodoLabel = state.medFilters.periodo === 'ANUAL' ? 'ACUMULADO ANUAL DO EXERCÍCIO' : state.medFilters.periodo;
+
+            if (medList.length === 0) {
+                showCopyToastMed('⚠️ Nenhuma O.S. liberada para emissão de NF-e nesta medição.');
+                return;
+            }
+
+            const totalMedicao = medList.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const headerColor = casaAtual === 'SESI' ? '#0284c7' : '#ea580c';
+            const headerBorder = casaAtual === 'SESI' ? '#0369a1' : '#c2410c';
+
+            let html = `
+                <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5;">
+                    <div style="padding: 12px 16px; background-color: #f0fdf4; border-left: 5px solid #16a34a; margin-bottom: 14px; border-radius: 4px;">
+                        <h3 style="margin: 0 0 6px 0; color: #15803d; font-size: 16px;">📐 BOLETIM OFICIAL DE MEDIÇÃO CONTRATUAL</h3>
+                        <p style="margin: 0; font-size: 13px; color: #166534;">
+                            Relação de Ordens de Serviço conferidas e <strong>LIBERADAS PARA EMISSÃO DE NOTA FISCAL (NF-e)</strong>.
+                        </p>
+                    </div>
+                    <p style="font-size: 13px; color: #334155; margin-bottom: 14px;">
+                        • <strong>Entidade Contratual (Casa):</strong> ${casaAtual}<br>
+                        • <strong>Mês de Competência / Período:</strong> ${periodoLabel}<br>
+                        • <strong>Quantidade de O.S. Faturadas:</strong> ${medList.length} chamados<br>
+                        • <strong>Valor Total da Medição:</strong> <span style="color: #15803d; font-weight: bold; font-size: 15px;">R$ ${fmt(totalMedicao)}</span>
+                    </p>
+                    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #cbd5e1; font-family: Arial, sans-serif;">
+                        <thead>
+                            <tr style="background-color: ${headerColor}; color: #ffffff; text-align: left;">
+                                <th style="padding: 9px; border: 1px solid ${headerBorder};">O.S</th>
+                                <th style="padding: 9px; border: 1px solid ${headerBorder};">NR</th>
+                                <th style="padding: 9px; border: 1px solid ${headerBorder};">Entidade / CNPJ</th>
+                                <th style="padding: 9px; border: 1px solid ${headerBorder};">Unidade</th>
+                                <th style="padding: 9px; border: 1px solid ${headerBorder};">Descrição do Serviço</th>
+                                <th style="padding: 9px; border: 1px solid ${headerBorder};">Mês Competência</th>
+                                <th style="padding: 9px; border: 1px solid ${headerBorder}; text-align: center;">Status Liberação</th>
+                                <th style="padding: 9px; border: 1px solid ${headerBorder}; text-align: right;">Valor a Faturar (R$)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            let plain = `BOLETIM OFICIAL DE MEDIÇÃO — ${casaAtual} | COMPETÊNCIA: ${periodoLabel}\n`;
+            plain += `Total Liberado: R$ ${fmt(totalMedicao)} (${medList.length} O.S.)\n\n`;
+            plain += `O.S\tNR\tEntidade\tUnidade\tDescrição\tCompetência\tStatus Liberação\tValor a Faturar\n`;
+
+            medList
+                .slice()
+                .sort((a, b) => b.valor - a.valor)
+                .forEach((t, i) => {
+                    const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+                    html += `
+                        <tr style="background-color: ${bg};">
+                            <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold; color: ${headerColor};">#${t.os}</td>
+                            <td style="padding: 8px; border: 1px solid #e2e8f0;">${t.nr}</td>
+                            <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">${t.casa}</td>
+                            <td style="padding: 8px; border: 1px solid #e2e8f0;"><strong>${t.unidade}</strong></td>
+                            <td style="padding: 8px; border: 1px solid #e2e8f0;">${t.descricao}</td>
+                            <td style="padding: 8px; border: 1px solid #e2e8f0;">${t.mes_emissao}</td>
+                            <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;">
+                                <span style="background: #dcfce7; color: #15803d; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #bbf7d0;">
+                                    ✅ LIBERADO P/ NFE
+                                </span>
+                            </td>
+                            <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: bold; color: #15803d;">R$ ${fmt(t.valor)}</td>
+                        </tr>
+                    `;
+                    plain += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
+                });
+
+            html += `
+                        </tbody>
+                        <tfoot>
+                            <tr style="background-color: #f1f5f9; font-weight: bold;">
+                                <td colspan="7" style="padding: 10px; border: 1px solid #cbd5e1; text-align: right; font-size: 13px;">
+                                    TOTAL DA MEDIÇÃO (${casaAtual} | ${periodoLabel}):
+                                </td>
+                                <td style="padding: 10px; border: 1px solid #cbd5e1; text-align: right; color: #15803d; font-size: 14px; font-weight: 800;">
+                                    R$ ${fmt(totalMedicao)}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
+            plain += `\nTOTAL DA MEDIÇÃO: R$ ${fmt(totalMedicao)}\n`;
+
+            executarCopiaClipboard(html, plain, `✅ Tabela da medição (${casaAtual} - ${periodoLabel}) copiada para E-mail!`);
+        }
+
+        function copiarMedicaoExcel() {
+            const medList = getMedicaoAtualList();
+            const casaAtual = state.medFilters.casa;
+            const periodoLabel = state.medFilters.periodo === 'ANUAL' ? 'ACUMULADO ANUAL DO EXERCÍCIO' : state.medFilters.periodo;
+
+            if (medList.length === 0) {
+                showCopyToastMed('⚠️ Nenhuma O.S. liberada para emissão de NF-e nesta medição.');
+                return;
+            }
+
+            const totalMedicao = medList.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+
+            // TSV ideal para colar direto no Excel ou Google Sheets mantendo cada valor em sua respectiva célula
+            let tsv = `O.S\tNR\tEntidade / CNPJ\tUnidade\tDescrição\tMês Competência\tStatus O.S\tLiberação p/ NFE\tValor a Faturar\n`;
+            
+            medList
+                .slice()
+                .sort((a, b) => b.valor - a.valor)
+                .forEach(t => {
+                    tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.mes_emissao}\tCONCLUIDO\tLIBERADO P/ NFE\t${fmt(t.valor)}\n`;
+                });
+
+            tsv += `TOTAL MEDIÇÃO\t\t\t\t\t\t\t\t${fmt(totalMedicao)}\n`;
+
+            // Tabela HTML limpa sem mesclagens para que o Excel cole diretamente em colunas correspondentes
+            let html = `<table><thead><tr><th>O.S</th><th>NR</th><th>Entidade / CNPJ</th><th>Unidade</th><th>Descrição</th><th>Mês Competência</th><th>Status O.S</th><th>Liberação p/ NFE</th><th>Valor a Faturar</th></tr></thead><tbody>`;
+            medList
+                .slice()
+                .sort((a, b) => b.valor - a.valor)
+                .forEach(t => {
+                    html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>CONCLUIDO</td><td>LIBERADO P/ NFE</td><td>${fmt(t.valor)}</td></tr>`;
+                });
+            html += `<tr><td colspan="8">TOTAL MEDIÇÃO</td><td>${fmt(totalMedicao)}</td></tr></tbody></table>`;
+
+            executarCopiaClipboard(html, tsv, `✅ Medição (${casaAtual} - ${periodoLabel}) formatada para Excel! Pressione Ctrl + V na sua planilha.`);
         }
 
         function copiarTabelaEmail() {
@@ -2524,7 +2723,7 @@ st.subheader("📊 Dashboard Interativo")
 
 html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
 
-# Altura calibrada para a extensão real de cada aba com rolagem ativada, eliminando o vácuo de tela
+# Altura calibrada para a extensão real de cada aba com rolagem ativada
 st.components.v1.html(html_content, height=1400, scrolling=True)
 
 st.subheader("📥 Download dos Arquivos")
@@ -2539,4 +2738,4 @@ with col1:
     )
 
 with col2:
-    st.info("✅ Painel de Pagamentos e Chamados gerado com sucesso!")
+    st.info("✅ Painel de Pagamentos, Medições e Chamados gerado com sucesso!")
