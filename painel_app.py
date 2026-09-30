@@ -781,23 +781,111 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .footer { margin-top: 30px; padding: 15px; text-align: center; color: #999; font-size: 12px; }
         .print-header-stamp { display: none; }
         
+        /* Sub-abas do Módulo de Medições */
+        .med-subtabs-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+        .med-subtab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 16px;
+            background: #ffffff;
+            color: #475569;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        }
+        .med-subtab-btn:hover { background: #f8fafc; border-color: #94a3b8; color: #0f172a; }
+        .med-subtab-btn.active {
+            background: #0284c7;
+            color: #ffffff;
+            border-color: #0284c7;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
+        }
+        .med-subtab-badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 800;
+        }
+        .med-subtab-btn.active .med-subtab-badge {
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+        }
+        .med-subtab-btn:not(.active) .med-subtab-badge {
+            background: #e2e8f0;
+            color: #475569;
+        }
+
+        .badge-cond-orcado {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .badge-cond-aguardando {
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
         @media screen {
             #printSection { display: none !important; }
         }
 
         @media print {
             body { background: #ffffff !important; color: #000000 !important; }
-            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, #medCasaFilters, #medPeriodoFilters, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav, .btn-inspect-toggle { display: none !important; }
+            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, #medCasaFilters, #medPeriodoFilters, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav, .btn-inspect-toggle, .med-subtabs-bar { display: none !important; }
             .table-wrapper { max-height: none !important; overflow: visible !important; border: none !important; }
-            .card, .kpi-card, .medicoes-card, .previsao-box { box-shadow: none !important; border: 1px solid #cbd5e1 !important; page-break-inside: avoid; }
-            table { page-break-inside: auto !important; width: 100% !important; }
-            tr { page-break-inside: avoid !important; page-break-after: auto !important; }
+            
+            /* CRÍTICO: Permitir que contêineres e cartões quebrem de página naturalmente para nunca gerar página em branco */
+            .card, .kpi-card, .medicoes-card, .previsao-box, #printSection, #printSection > div { 
+                box-shadow: none !important; 
+                border: 1px solid #cbd5e1 !important; 
+                page-break-inside: auto !important; 
+                break-inside: auto !important;
+            }
+            
+            /* Evitar quebra apenas em pequenos cartões e linhas individuais da tabela */
+            tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+            .mini-kpi-med { page-break-inside: avoid !important; break-inside: avoid !important; margin-bottom: 8px !important; }
+            
+            table { page-break-inside: auto !important; width: 100% !important; border-collapse: collapse !important; }
             thead { display: table-header-group !important; }
             tfoot { display: table-footer-group !important; }
 
-            /* Modo de Impressão Isolada (Corrige a tela em branco) */
+            .print-header-stamp { 
+                display: block !important; 
+                page-break-after: avoid !important; 
+                break-after: avoid !important;
+                margin-bottom: 12px !important; 
+                padding-bottom: 8px !important; 
+            }
+
+            /* Modo de Impressão Isolada sem vácuo inicial */
             body.is-printing-isolated > .container { display: none !important; }
-            body.is-printing-isolated #printSection { display: block !important; width: 100% !important; margin: 0 !important; padding: 10px !important; }
+            body.is-printing-isolated #printSection { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
             body:not(.is-printing-isolated) #printSection { display: none !important; }
         }
     </style>
@@ -1113,7 +1201,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             🛡️ GESTÃO DE RISCO: PREVISÃO DE MEDIÇÕES FUTURAS & SALDO ESTIMADO (<span id="medPrevCasaLabel" style="color: #0284c7;">SENAI</span>)
                         </div>
                         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                            <button type="button" class="btn-inspect-toggle no-print" onclick="toggleInspecaoPrevisao()" id="btnToggleInspect">
+                            <button type="button" class="btn-inspect-toggle no-print" onclick="switchMedSubTab('previsao')" id="btnToggleInspect">
                                 👁️ Inspecionar O.S. Futuras (0)
                             </button>
                             <button type="button" class="btn-print no-print" onclick="imprimirPrevisaoFutura()" style="border-color: #4338ca; color: #4338ca; padding: 5px 12px; font-size: 11px; font-weight: 700;" title="Imprimir Relatório de Previsão de O.S. Futuras e Saldo Estimado">
@@ -1171,33 +1259,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             </span>
                         </div>
                     </div>
-
-                    <!-- Gaveta de Inspeção das O.S. Futuras -->
-                    <div id="medInspecaoBox" style="display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed #cbd5e1;">
-                        <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                            <span>🔍 O.S. com Investimentos em Andamento / Previsão Futura:</span>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 11px; color: #64748b;">(Itens orçados ainda não liberados p/ NFE)</span>
-                                <button type="button" class="btn-print no-print" onclick="imprimirPrevisaoFutura()" style="border-color: #4338ca; color: #4338ca; padding: 3px 10px; font-size: 11px; font-weight: 700;">
-                                    🖨️ Imprimir Esta Lista
-                                </button>
-                            </div>
-                        </div>
-                        <div style="max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
-                            <table style="font-size: 11px; width: 100%; border-collapse: collapse;">
-                                <thead style="background: #f1f5f9; position: sticky; top: 0;">
-                                    <tr>
-                                        <th style="padding: 6px 10px;">O.S</th>
-                                        <th style="padding: 6px 10px;">Unidade</th>
-                                        <th style="padding: 6px 10px;">Descrição</th>
-                                        <th style="padding: 6px 10px;">Status O.S</th>
-                                        <th style="padding: 6px 10px; text-align: right;">Previsão (R$)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="medInspecaoBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Painel de Filtros de Casa e Período -->
@@ -1213,48 +1274,144 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <div class="filter-group" id="medPeriodoFilters"></div>
                 </div>
 
-                <!-- Tabela de Medições Exata da Planilha de Gerenciamento -->
-                <div class="table-wrapper">
-                    <table id="medTable">
-                        <thead>
-                            <tr style="background: #f1f5f9;">
-                                <th>O.S</th>
-                                <th>NR</th>
-                                <th>Entidade / CNPJ</th>
-                                <th>Unidade</th>
-                                <th>Descrição</th>
-                                <th>Mês Competência</th>
-                                <th>Status O.S</th>
-                                <th>Liberação p/ NFE</th>
-                                <th style="text-align: right;">Valor a Faturar</th>
-                            </tr>
-                        </thead>
-                        <tbody id="medTableBody"></tbody>
-                        <tfoot id="medTableFoot"></tfoot>
-                    </table>
+                <!-- Barra de Navegação entre Medições Homologadas e O.S. Previsionadas -->
+                <div class="med-subtabs-bar no-print">
+                    <button type="button" class="med-subtab-btn active" id="btnSubtabLiberadas" onclick="switchMedSubTab('liberadas')">
+                        📋 1. Medições Homologadas (LIBERADO P/ NFE) <span class="med-subtab-badge" id="badgeCountLiberadas">0</span>
+                    </button>
+                    <button type="button" class="med-subtab-btn" id="btnSubtabPrevisao" onclick="switchMedSubTab('previsao')">
+                        🛡️ 2. O.S. com Orçamento Previsionado (Futuras) <span class="med-subtab-badge" id="badgeCountPrevisao">0</span>
+                    </button>
+                    <button type="button" class="med-subtab-btn" id="btnSubtabAmbas" onclick="switchMedSubTab('ambas')">
+                        📑 3. Visualizar Ambas as Tabelas
+                    </button>
                 </div>
 
-                <!-- Faixa de Resumo da Medição -->
-                <div class="summary-ribbon">
-                    <div class="left" id="medRibbonText">
-                        🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>SESI</u> | Competência: <u>SETEMBRO</u> | Aptos para NFE: <strong>0 chamados</strong>
+                <!-- SEÇÃO 1: TABELA OFICIAL DE MEDIÇÕES (LIBERADAS P/ NFE) -->
+                <div id="sectionMedLiberadas">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                        <div style="font-size: 14px; font-weight: 800; color: #0284c7; display: flex; align-items: center; gap: 6px;">
+                            📋 Ordens de Serviço Homologadas para Faturamento (LIBERADO P/ NFE)
+                        </div>
+                        <div style="font-size: 12px; color: #64748b;">
+                            Itens efetivamente aprovados para a competência selecionada
+                        </div>
                     </div>
-                    <div class="right" id="medRibbonVal">
-                        Total Medição Liberada: R$ 0,00
+
+                    <div class="table-wrapper">
+                        <table id="medTable">
+                            <thead>
+                                <tr style="background: #f1f5f9;">
+                                    <th>O.S</th>
+                                    <th>NR</th>
+                                    <th>Entidade / CNPJ</th>
+                                    <th>Unidade</th>
+                                    <th>Descrição</th>
+                                    <th>Mês Competência</th>
+                                    <th>Status O.S</th>
+                                    <th>Liberação p/ NFE</th>
+                                    <th style="text-align: right;">Valor a Faturar</th>
+                                </tr>
+                            </thead>
+                            <tbody id="medTableBody"></tbody>
+                            <tfoot id="medTableFoot"></tfoot>
+                        </table>
+                    </div>
+
+                    <!-- Faixa de Resumo da Medição Homologada -->
+                    <div class="summary-ribbon">
+                        <div class="left" id="medRibbonText">
+                            🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>SESI</u> | Competência: <u>SETEMBRO</u> | Aptos para NFE: <strong>0 chamados</strong>
+                        </div>
+                        <div class="right" id="medRibbonVal">
+                            Total Medição Liberada: R$ 0,00
+                        </div>
+                    </div>
+
+                    <!-- Botões de Cópia da Medição Atual -->
+                    <div class="no-print" style="margin-top: 14px; padding: 12px 16px; background: #f8fafc; border: 1px dashed #0284c7; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                            <button class="btn-action-copy" style="background: #0284c7;" onclick="copiarMedicaoEmail()" title="Copia a medição selecionada formatada com layout executivo para colar no e-mail (Outlook / Gmail)">
+                                📋 Copiar Medição p/ E-mail
+                            </button>
+                            <button class="btn-action-copy" style="background: #059669;" onclick="copiarMedicaoExcel()" title="Copia a medição em colunas tabulares prontas para colar diretamente no Excel ou Google Sheets">
+                                📊 Copiar Medição p/ Planilha
+                            </button>
+                        </div>
+                        <div id="copyToastMed" class="copy-toast">✅ Medição copiada! Pressione Ctrl + V no seu e-mail ou planilha.</div>
                     </div>
                 </div>
 
-                <!-- Botões de Cópia da Medição Atual para E-mail e Planilha -->
-                <div class="no-print" style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #0284c7; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                        <button class="btn-action-copy" style="background: #0284c7;" onclick="copiarMedicaoEmail()" title="Copia a medição selecionada formatada com layout executivo para colar no e-mail (Outlook / Gmail)">
-                            📋 Copiar Tabela p/ E-mail
-                        </button>
-                        <button class="btn-action-copy" style="background: #059669;" onclick="copiarMedicaoExcel()" title="Copia a medição em colunas tabulares prontas para colar diretamente no Excel ou Google Sheets">
-                            📊 Copiar p/ Planilha (Excel / Sheets)
-                        </button>
+                <!-- SEÇÃO 2: TABELA DE O.S. COM ORÇAMENTO PREVISIONADO (PREVISÃO FUTURA) -->
+                <div id="sectionMedPrevisionadas" style="display: none; margin-top: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; border-bottom: 2px solid #e0e7ff; padding-bottom: 10px;">
+                        <div>
+                            <div style="font-size: 15px; font-weight: 800; color: #4338ca; display: flex; align-items: center; gap: 8px;">
+                                🛡️ Ordens de Serviço com Orçamento Previsionado (Previsão de Medições Futuras)
+                            </div>
+                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">
+                                Relação completa de chamados orçados em andamento e aguardando cotação que consumirão o teto contratual
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button type="button" class="btn-print no-print" onclick="imprimirPrevisaoFutura()" style="border-color: #4338ca; color: #4338ca; font-weight: 700;">
+                                🖨️ Imprimir O.S. Previsionadas
+                            </button>
+                        </div>
                     </div>
-                    <div id="copyToastMed" class="copy-toast">✅ Medição copiada! Pressione Ctrl + V no seu e-mail ou planilha.</div>
+
+                    <!-- Filtros Rápidos de Status e Busca das O.S. Previsionadas -->
+                    <div class="no-print" style="margin-bottom: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                        <input type="text" class="filter-input" id="searchPrevOS" placeholder="🔍 Buscar por O.S., Unidade ou Descrição nas Previsionadas..." oninput="filtrarTabelaPrevisionadas()" style="flex: 1; min-width: 250px;">
+                        <div class="filter-group" style="margin: 0;">
+                            <span class="filter-chip active" id="chipPrevTodos" onclick="setFiltroStatusPrev('')">Todas as Futuras</span>
+                            <span class="filter-chip" id="chipPrevOrcadas" onclick="setFiltroStatusPrev('ORCADAS')">🟡 Com Valor Orçado</span>
+                            <span class="filter-chip" id="chipPrevAguardando" onclick="setFiltroStatusPrev('AGUARDANDO')">⏳ Aguardando Orçamento</span>
+                        </div>
+                    </div>
+
+                    <div class="table-wrapper" id="medPrevTableWrapper">
+                        <table id="medPrevTable">
+                            <thead>
+                                <tr style="background: #eef2ff;">
+                                    <th>O.S</th>
+                                    <th>NR</th>
+                                    <th>Entidade / CNPJ</th>
+                                    <th>Unidade</th>
+                                    <th>Descrição do Serviço</th>
+                                    <th>Data Abertura</th>
+                                    <th>Status O.S</th>
+                                    <th>Condição</th>
+                                    <th style="text-align: right;">Valor Previsionado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="medPrevTableBody"></tbody>
+                            <tfoot id="medPrevTableFoot"></tfoot>
+                        </table>
+                    </div>
+
+                    <!-- Faixa de Resumo da Previsão Orçamentária -->
+                    <div class="summary-ribbon" style="background: #eef2ff; border-color: #c7d2fe;">
+                        <div class="left" id="medPrevRibbonText" style="color: #3730a3;">
+                            🛡️ <strong>Total Previsionado:</strong> Entidade: <u>SENAI</u> | O.S. Orçadas: <strong>0 itens</strong> | Margem Real Livre: <strong>R$ 0,00</strong>
+                        </div>
+                        <div class="right" id="medPrevRibbonVal" style="color: #4338ca;">
+                            Previsão Total: R$ 0,00
+                        </div>
+                    </div>
+
+                    <!-- Botões de Cópia da Previsão -->
+                    <div class="no-print" style="margin-top: 14px; padding: 12px 16px; background: #f8fafc; border: 1px dashed #4338ca; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                            <button class="btn-action-copy" style="background: #4338ca;" onclick="copiarMedPrevEmail()" title="Copia a relação de O.S. previsionadas formatada para e-mail">
+                                📋 Copiar O.S. Previsionadas p/ E-mail
+                            </button>
+                            <button class="btn-action-copy" style="background: #059669;" onclick="copiarMedPrevExcel()" title="Copia a relação de O.S. previsionadas em colunas para colar no Excel">
+                                📊 Copiar p/ Planilha
+                            </button>
+                        </div>
+                        <div id="copyToastMedPrev" class="copy-toast">✅ Relação de O.S. Previsionadas copiada! Pressione Ctrl + V.</div>
+                    </div>
                 </div>
             </div>
 
@@ -1352,477 +1509,69 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             tickets: [],
             filters: { status: [], unidade: [], os: '', listStatus: '', listUnit: '' },
             payFilters: { mes: '', statusPagamento: '', casa: '' },
-            medFilters: { casa: 'SESI', periodo: 'ANUAL' }
+            medFilters: { casa: 'SESI', periodo: 'ANUAL', subTab: 'liberadas', filtroPrevStatus: '', searchPrev: '' }
         };
 
-        function switchTab(tabId) {
-            document.querySelectorAll('.tab-view').forEach(el => el.style.display = 'none');
-            document.querySelectorAll('.nav-tab-btn').forEach(btn => btn.classList.remove('active'));
-
-            const targetView = document.getElementById('view-' + tabId);
-            if (targetView) targetView.style.display = 'block';
-
-            const targetNav = document.getElementById('nav-' + tabId);
-            if (targetNav) targetNav.classList.add('active');
-
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-
-            if (tabId === 'inicial' && window.statusChartInstance && window.unitChartInstance) {
-                window.statusChartInstance.resize();
-                window.unitChartInstance.resize();
-            }
-        }
-
-        function init() {
-            state.tickets = DATA.chamados;
-            document.getElementById('updateTime').textContent = new Date().toLocaleString('pt-BR');
-            document.getElementById('totalTickets').textContent = state.tickets.length;
-
-            if (DATA.meses_existentes && DATA.meses_existentes.length > 0) {
-                state.medFilters.periodo = DATA.meses_existentes[DATA.meses_existentes.length - 1];
-            } else {
-                state.medFilters.periodo = 'ANUAL';
-            }
-
-            renderFilters();
-            renderListStatusFilter();
-            renderListUnitFilter();
-            renderPaymentCasaFilters();
-            renderPaymentMonthFilters();
-            renderMedicoesCasaFilters();
-            renderMedicoesPeriodoFilters();
-            render();
-        }
-
-        function getFiltered() {
-            return state.tickets.filter(t => {
-                const matchOS = state.filters.os === '' || t.os.toString().includes(state.filters.os);
-                const matchStatus = state.filters.status.length === 0 || state.filters.status.includes(t.status);
-                const matchUnidadeGlobal = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
-                const matchListStatus = state.filters.listStatus === '' || t.status === state.filters.listStatus;
-                const matchListUnit = state.filters.listUnit === '' || t.unidade === state.filters.listUnit;
-                return matchOS && matchStatus && matchUnidadeGlobal && matchListStatus && matchListUnit;
-            });
-        }
-
-        function getPayFiltered() {
-            return state.tickets.filter(t => {
-                const matchUnidade = state.filters.unidade.length === 0 || state.filters.unidade.includes(t.unidade);
-                const matchCasa = state.payFilters.casa === '' || t.casa === state.payFilters.casa;
-                const matchMes = state.payFilters.mes === '' || t.mes_emissao === state.payFilters.mes;
-                const matchPayStatus = state.payFilters.statusPagamento === '' || t.status_pagamento === state.payFilters.statusPagamento;
-                return matchUnidade && matchCasa && matchMes && matchPayStatus;
-            });
-        }
-
-        function renderKPIs() {
-            const filtered = getFiltered();
-            const total = filtered.length;
-            const concluido = filtered.filter(t => t.status === 'CONCLUIDO').length;
-            const emExec = filtered.filter(t => t.status === 'EM EXECUÇÃO').length;
-            const paralisado = filtered.filter(t => t.status === 'PARALISADO').length;
-            const muitoAntigos = filtered.filter(t => t.dias_abertos !== null && t.dias_abertos > 30).length;
-            const valorTotal = filtered.reduce((s, t) => s + (t.valor || 0), 0);
-            const comOrcamento = filtered.filter(t => t.valor > 0).length;
-
-            const html = `
-                <div class="kpi-card">
-                    <div class="kpi-label">Total de Chamados</div>
-                    <div class="kpi-value">${total}</div>
-                    <div class="kpi-percent">Chamados filtrados</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">Concluídos</div>
-                    <div class="kpi-value" style="color: var(--success);">${concluido}</div>
-                    <div class="kpi-percent">${total ? Math.round(concluido * 100 / total) : 0}% do total</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">Em Execução</div>
-                    <div class="kpi-value" style="color: var(--primary);">${emExec}</div>
-                    <div class="kpi-percent">${total ? Math.round(emExec * 100 / total) : 0}% em andamento</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">⚠️ Paralisados</div>
-                    <div class="kpi-value" style="color: var(--danger);">${paralisado}</div>
-                    <div class="kpi-percent">Necessita atenção</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">🔴 Abertos > 30 dias</div>
-                    <div class="kpi-value" style="color: #e34948;">${muitoAntigos}</div>
-                    <div class="kpi-percent">Cobrar celeridade</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">Valor Investido</div>
-                    <div class="kpi-value" style="font-size: 22px; color: var(--primary);">
-                        R$ ${(valorTotal / 1000).toFixed(1)}K
-                    </div>
-                    <div class="kpi-percent">${comOrcamento} chamados orçados</div>
-                </div>
-            `;
-            document.getElementById('kpis').innerHTML = html;
-        }
-
-        function renderContracts() {
-            const contracts = DATA.contracts;
-            let html = '';
-            for (const [key, cData] of Object.entries(contracts)) {
-                const name = key === 'sesi' ? 'SESI' : 'SENAI';
-                const utilizado = cData.utilizado;
-                const saldo = cData.saldo;
-                const contrato = cData.contrato;
-                const pctUtilizado = contrato > 0 ? Math.min(100, Math.round((utilizado * 100) / contrato)) : 0;
-
-                html += `
-                    <div style="margin-bottom: 24px;">
-                        <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--primary); font-weight: 600; text-transform: uppercase;">${name}</h3>
-                        <div class="contract-stat">
-                            <span class="contract-label">Valor do Contrato</span>
-                            <span class="contract-value">R$ ${new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2}).format(contrato)}</span>
-                        </div>
-                        <div class="contract-stat">
-                            <span class="contract-label">Utilizado</span>
-                            <span class="contract-value">R$ ${new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2}).format(utilizado)}</span>
-                        </div>
-                        <div class="progress-container">
-                            <div class="progress-label">
-                                <span>Progresso</span>
-                                <span>${pctUtilizado}% utilizado</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: ${pctUtilizado}%"></div>
-                            </div>
-                        </div>
-                        <div class="contract-stat" style="margin-bottom: 0;">
-                            <span class="contract-label">Saldo Disponível</span>
-                            <span class="contract-value" style="color: var(--info);">R$ ${new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2}).format(saldo)}</span>
-                        </div>
-                    </div>
-                `;
-            }
-            document.getElementById('contracts').innerHTML = html;
-        }
-
-        function renderTempoAberto() {
-            const filtered = getFiltered();
-            const abertos = filtered.filter(t => t.status !== 'CONCLUIDO' && t.dias_abertos !== null);
-
-            if (abertos.length === 0) {
-                document.getElementById('tempoAberto').innerHTML = '<p style="color: #999; text-align: center; padding: 40px 0;">Nenhum chamado aberto nos filtros atuais</p>';
-                return;
-            }
-
-            const mediaDias = Math.round(abertos.reduce((s, t) => s + t.dias_abertos, 0) / abertos.length);
-            const range030 = abertos.filter(t => t.dias_abertos <= 30).length;
-            const range3060 = abertos.filter(t => t.dias_abertos > 30 && t.dias_abertos <= 60).length;
-            const range60plus = abertos.filter(t => t.dias_abertos > 60).length;
-
-            const html = `
-                <div style="text-align: center; margin-bottom: 24px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="font-size: 12px; color: #666; margin-bottom: 8px; text-transform: uppercase;">Média de Dias em Aberto</div>
-                    <div style="font-size: 48px; font-weight: bold; color: var(--primary); margin-bottom: 4px;">${mediaDias}</div>
-                    <div style="font-size: 13px; color: #999;">dias (em ${abertos.length} chamados abertos)</div>
-                </div>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-                    <div style="background: #d4edda; border-radius: 8px; padding: 14px; text-align: center; border-left: 4px solid #0ca30c;">
-                        <div style="font-size: 26px; font-weight: bold; color: #155724;">${range030}</div>
-                        <div style="font-size: 12px; color: #155724; font-weight: 600; margin-top: 4px;">0-30 dias</div>
-                        <div style="font-size: 11px; color: #666; margin-top: 2px;">${Math.round(range030 * 100 / abertos.length)}%</div>
-                    </div>
-                    <div style="background: #fff3cd; border-radius: 8px; padding: 14px; text-align: center; border-left: 4px solid #fab219;">
-                        <div style="font-size: 26px; font-weight: bold; color: #856404;">${range3060}</div>
-                        <div style="font-size: 12px; color: #856404; font-weight: 600; margin-top: 4px;">30-60 dias</div>
-                        <div style="font-size: 11px; color: #666; margin-top: 2px;">${Math.round(range3060 * 100 / abertos.length)}%</div>
-                    </div>
-                    <div style="background: #f8d7da; border-radius: 8px; padding: 14px; text-align: center; border-left: 4px solid #e34948;">
-                        <div style="font-size: 26px; font-weight: bold; color: #721c24;">${range60plus}</div>
-                        <div style="font-size: 12px; color: #721c24; font-weight: 600; margin-top: 4px;">>60 dias</div>
-                        <div style="font-size: 11px; color: #666; margin-top: 2px;">${Math.round(range60plus * 100 / abertos.length)}%</div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('tempoAberto').innerHTML = html;
-        }
-
-        function renderFilters() {
-            const statuses = [...new Set(state.tickets.map(t => t.status))].sort();
-            const unidades = [...new Set(state.tickets.map(t => t.unidade))].sort();
-
-            let html = `
-                <div class="filter-group">
-                    <span class="filter-label">Status (clique para alternar)</span>
-                    ${statuses.map(s => `
-                        <span class="filter-chip ${state.filters.status.includes(s) ? 'active' : ''}" onclick="toggleFilter('status', '${s}')">
-                            ${s}
-                        </span>
-                    `).join('')}
-                </div>
-                <div class="filter-group" style="margin-top: 10px;">
-                    <span class="filter-label">Unidade (clique para alternar)</span>
-                    ${unidades.map(u => `
-                        <span class="filter-chip ${state.filters.unidade.includes(u) ? 'active' : ''}" onclick="toggleFilter('unidade', '${u}')">
-                            ${u}
-                        </span>
-                    `).join('')}
-                </div>
-            `;
-            document.getElementById('filters').innerHTML = html;
-        }
-
-        function renderPaymentCasaFilters() {
-            const opcoes = [
-                { id: '', label: '🏢 Todas as Entidades (SESI + SENAI)' },
-                { id: 'SESI', label: '🔵 SESI (CNPJ SESI)' },
-                { id: 'SENAI', label: '🟠 SENAI (CNPJ SENAI)' }
-            ];
-
-            let html = '';
-            opcoes.forEach(op => {
-                const isActive = state.payFilters.casa === op.id;
-                html += `
-                    <span class="filter-chip filter-chip-pay ${isActive ? 'active' : ''}" onclick="setPayCasa('${op.id}')">
-                        ${op.label}
-                    </span>
-                `;
-            });
-            document.getElementById('payCasaFilters').innerHTML = html;
-        }
-
-        function setPayCasa(casa) {
-            state.payFilters.casa = casa;
-            renderPaymentCasaFilters();
-            renderPaymentPanel();
-        }
-
-        function renderPaymentMonthFilters() {
-            let mesesValidos = DATA.meses_existentes || [];
-            if (mesesValidos.length === 0) {
-                mesesValidos = [...new Set(state.tickets.map(t => t.mes_emissao))]
-                    .filter(m => m && !['-', 'NÃO DEFINIDO', 'NAN', ''].includes(m.toUpperCase()));
-            }
+        function switchMedSubTab(tabName) {
+            state.medFilters.subTab = tabName;
             
-            let htmlMes = `
-                <span class="filter-chip filter-chip-pay ${state.payFilters.mes === '' ? 'active' : ''}" onclick="setPayMonth('')">
-                    Todos os Meses
-                </span>
-            `;
-            mesesValidos.forEach(m => {
-                const isActive = state.payFilters.mes === m;
-                htmlMes += `
-                    <span class="filter-chip filter-chip-pay ${isActive ? 'active' : ''}" onclick="setPayMonth('${m}')">
-                        📅 ${m}
-                    </span>
-                `;
-            });
-            document.getElementById('payMonthFilters').innerHTML = htmlMes;
+            const btnLib = document.getElementById('btnSubtabLiberadas');
+            const btnPrev = document.getElementById('btnSubtabPrevisao');
+            const btnAmbas = document.getElementById('btnSubtabAmbas');
 
-            const payStatuses = ['LIBERADO P/ NFE', 'EM MEDIÇÃO', 'BLOQUEADO', 'PENDENTE ORÇAMENTO'];
-            let htmlStatus = `
-                <span class="filter-chip filter-chip-pay ${state.payFilters.statusPagamento === '' ? 'active' : ''}" onclick="setPayStatus('')">
-                    Todos os Status
-                </span>
-            `;
-            payStatuses.forEach(s => {
-                const isActive = state.payFilters.statusPagamento === s;
-                htmlStatus += `
-                    <span class="filter-chip filter-chip-pay ${isActive ? 'active' : ''}" onclick="setPayStatus('${s}')">
-                        ${s}
-                    </span>
-                `;
-            });
-            document.getElementById('payStatusFilters').innerHTML = htmlStatus;
-        }
+            if (btnLib) btnLib.classList.remove('active');
+            if (btnPrev) btnPrev.classList.remove('active');
+            if (btnAmbas) btnAmbas.classList.remove('active');
 
-        function setPayMonth(m) {
-            state.payFilters.mes = m;
-            renderPaymentMonthFilters();
-            renderPaymentPanel();
-        }
+            const secLib = document.getElementById('sectionMedLiberadas');
+            const secPrev = document.getElementById('sectionMedPrevisionadas');
 
-        function setPayStatus(s) {
-            state.payFilters.statusPagamento = s;
-            renderPaymentMonthFilters();
-            renderPaymentPanel();
-        }
-
-        function renderPaymentPanel() {
-            const payList = getPayFiltered();
-
-            const liberados = payList.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
-            const emMedicao = payList.filter(t => t.status_pagamento === 'EM MEDIÇÃO');
-            const bloqueados = payList.filter(t => t.status_pagamento === 'BLOQUEADO');
-
-            const valLiberado = liberados.reduce((acc, t) => acc + (t.valor || 0), 0);
-            const valMedicao = emMedicao.reduce((acc, t) => acc + (t.valor || 0), 0);
-            const valBloqueado = bloqueados.reduce((acc, t) => acc + (t.valor || 0), 0);
-            const valTotal = payList.reduce((acc, t) => acc + (t.valor || 0), 0);
-
-            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
-
-            document.getElementById('payValLiberado').textContent = `R$ ${fmt(valLiberado)}`;
-            document.getElementById('payCountLiberado').textContent = `${liberados.length} O.S. prontas para faturar`;
-
-            document.getElementById('payValMedicao').textContent = `R$ ${fmt(valMedicao)}`;
-            document.getElementById('payCountMedicao').textContent = `${emMedicao.length} O.S. em andamento`;
-
-            document.getElementById('payValBloqueado').textContent = `R$ ${fmt(valBloqueado)}`;
-            document.getElementById('payCountBloqueado').textContent = `${bloqueados.length} O.S. paralisadas`;
-
-            document.getElementById('payValTotal').textContent = `R$ ${fmt(valTotal)}`;
-            document.getElementById('payCountTotal').textContent = `${payList.length} chamados filtrados`;
-
-            const casaTxt = state.payFilters.casa ? ` [${state.payFilters.casa}]` : ' [SESI + SENAI]';
-            const mesTxt = state.payFilters.mes ? `Competência: ${state.payFilters.mes}` : 'Todos os Meses';
-            document.getElementById('paySummaryBadge').textContent = `Faturamento: R$ ${fmt(valLiberado)}${casaTxt} (${mesTxt})`;
-
-            let rowsHTML = payList
-                .sort((a, b) => {
-                    if (a.status_pagamento === 'LIBERADO P/ NFE' && b.status_pagamento !== 'LIBERADO P/ NFE') return -1;
-                    if (a.status_pagamento !== 'LIBERADO P/ NFE' && b.status_pagamento === 'LIBERADO P/ NFE') return 1;
-                    return b.valor - a.valor;
-                })
-                .map(t => {
-                    let badgeClass = 'status-aguardando-orcamento';
-                    let icone = '⏳';
-                    if (t.status_pagamento === 'LIBERADO P/ NFE') {
-                        badgeClass = 'status-concluido';
-                        icone = '✅';
-                    } else if (t.status_pagamento === 'EM MEDIÇÃO') {
-                        badgeClass = 'status-em-execucao';
-                        icone = '🔄';
-                    } else if (t.status_pagamento === 'BLOQUEADO') {
-                        badgeClass = 'status-paralisado';
-                        icone = '⛔';
-                    }
-
-                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-                    const casaBadgeColor = t.casa === 'SESI' ? '#0d6efd' : (t.casa === 'SENAI' ? '#e65100' : '#6c757d');
-                    const casaBadgeBg = t.casa === 'SESI' ? '#e7f3ff' : (t.casa === 'SENAI' ? '#fff3e0' : '#f8f9fa');
-
-                    return `
-                        <tr>
-                            <td style="font-weight: 700; color: #0d6efd;">#${t.os}</td>
-                            <td>${t.nr}</td>
-                            <td>
-                                <span style="display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${casaBadgeBg}; color: ${casaBadgeColor}; border: 1px solid ${casaBadgeColor}40;">
-                                    ${t.casa}
-                                </span>
-                            </td>
-                            <td><strong>${t.unidade}</strong></td>
-                            <td style="max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
-                            <td><span style="font-size: 12px; font-weight: 600; color: #495057;">${t.mes_emissao}</span></td>
-                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
-                            <td><span class="status-badge ${badgeClass}">${icone} ${t.status_pagamento}</span></td>
-                            <td style="text-align: right; font-weight: 700; color: ${t.status_pagamento === 'LIBERADO P/ NFE' ? '#0ca30c' : '#333'};">
-                                R$ ${fmt(t.valor)}
-                            </td>
-                        </tr>
-                    `;
-                }).join('');
-
-            if (payList.length === 0) {
-                rowsHTML = '<tr><td colspan="9" style="text-align:center; padding: 24px; color: #999;">Nenhum chamado de pagamento localizado para este filtro.</td></tr>';
+            if (tabName === 'liberadas') {
+                if (btnLib) btnLib.classList.add('active');
+                if (secLib) secLib.style.display = 'block';
+                if (secPrev) secPrev.style.display = 'none';
+            } else if (tabName === 'previsao') {
+                if (btnPrev) btnPrev.classList.add('active');
+                if (secLib) secLib.style.display = 'none';
+                if (secPrev) secPrev.style.display = 'block';
+                if (secPrev) secPrev.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else if (tabName === 'ambas') {
+                if (btnAmbas) btnAmbas.classList.add('active');
+                if (secLib) secLib.style.display = 'block';
+                if (secPrev) secPrev.style.display = 'block';
             }
-
-            document.getElementById('payTableBody').innerHTML = rowsHTML;
-
-            const footHTML = `
-                <tr>
-                    <td colspan="4" style="font-size: 13px; text-transform: uppercase; color: #1e293b;">
-                        📌 TOTAL GERAL DO FILTRO: <span style="color: #0d6efd;">${state.payFilters.casa || 'SESI + SENAI'}</span> | <span style="color: #055160;">${state.payFilters.mes || 'TODOS OS MESES'}</span>
-                    </td>
-                    <td colspan="4" style="text-align: right; color: #475569; font-size: 12px;">
-                        Liberado para NFE: <strong style="color: #0ca30c;">R$ ${fmt(valLiberado)}</strong> (${liberados.length} O.S.) &nbsp;|&nbsp; Total da Seleção (${payList.length} O.S.):
-                    </td>
-                    <td style="text-align: right; font-size: 15px; color: #0f172a; background: #e2e8f0;">
-                        R$ ${fmt(valTotal)}
-                    </td>
-                </tr>
-            `;
-            document.getElementById('payTableFoot').innerHTML = footHTML;
-
-            const casaNome = state.payFilters.casa ? state.payFilters.casa : 'SESI + SENAI';
-            const mesNome = state.payFilters.mes ? state.payFilters.mes : 'Todos os Meses';
-            document.getElementById('paySummaryFooterText').innerHTML = `
-                🏷️ <strong>Resumo do Faturamento:</strong> Entidade: <u>${casaNome}</u> | Mês de Competência: <u>${mesNome}</u> | Aptos para NFE: <strong>${liberados.length} chamados</strong>
-            `;
-            document.getElementById('paySummaryFooterVal').innerHTML = `
-                Total Faturamento Liberado: R$ ${fmt(valLiberado)}
-            `;
         }
 
-        function renderMedicoesCasaFilters() {
-            const opcoes = [
-                { id: 'SESI', label: '🔵 SESI (CNPJ SESI)' },
-                { id: 'SENAI', label: '🟠 SENAI (CNPJ SENAI)' }
-            ];
-
-            let html = '';
-            opcoes.forEach(op => {
-                const isActive = state.medFilters.casa === op.id;
-                const activeClass = isActive ? (op.id === 'SESI' ? ' active-sesi' : ' active-senai') : '';
-                html += `
-                    <span class="filter-chip-med${activeClass}" onclick="setMedCasa('${op.id}')">
-                        ${op.label}
-                    </span>
-                `;
-            });
-            document.getElementById('medCasaFilters').innerHTML = html;
-        }
-
-        function setMedCasa(casa) {
-            state.medFilters.casa = casa;
-            renderMedicoesCasaFilters();
-            renderMedicoesPeriodoFilters();
-            renderMedicoesPanel();
-        }
-
-        function renderMedicoesPeriodoFilters() {
-            let mesesValidos = DATA.meses_existentes || [];
-            if (mesesValidos.length === 0) {
-                mesesValidos = [...new Set(state.tickets.map(t => t.mes_emissao))]
-                    .filter(m => m && !['-', 'NÃO DEFINIDO', 'NAN', ''].includes(m.toUpperCase()));
-            }
-
-            const isSesi = state.medFilters.casa === 'SESI';
-            const activeMonthClass = isSesi ? ' active-sesi' : ' active-senai';
-
-            let html = '';
-            mesesValidos.forEach(m => {
-                const isActive = state.medFilters.periodo === m;
-                html += `
-                    <span class="filter-chip-med ${isActive ? activeMonthClass : ''}" onclick="setMedPeriodo('${m}')">
-                        📅 ${m}
-                    </span>
-                `;
+        function setFiltroStatusPrev(statusKey) {
+            state.medFilters.filtroPrevStatus = statusKey;
+            ['chipPrevTodos', 'chipPrevOrcadas', 'chipPrevAguardando'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.remove('active');
             });
 
-            const isAnual = state.medFilters.periodo === 'ANUAL';
-            html += `
-                <span class="filter-chip-med ${isAnual ? 'active-anual' : ''}" onclick="setMedPeriodo('ANUAL')">
-                    📊 ACUMULADO ANUAL (Todas as Medições)
-                </span>
-            `;
-
-            document.getElementById('medPeriodoFilters').innerHTML = html;
-        }
-
-        function setMedPeriodo(p) {
-            state.medFilters.periodo = p;
-            renderMedicoesPeriodoFilters();
-            renderMedicoesPanel();
-        }
-
-        function toggleInspecaoPrevisao() {
-            const box = document.getElementById('medInspecaoBox');
-            const btn = document.getElementById('btnToggleInspect');
-            if (!box) return;
-            if (box.style.display === 'none' || box.style.display === '') {
-                box.style.display = 'block';
-                btn.innerHTML = '✖️ Ocultar O.S. Futuras';
+            if (statusKey === 'ORCADAS') {
+                const el = document.getElementById('chipPrevOrcadas');
+                if (el) el.classList.add('active');
+            } else if (statusKey === 'AGUARDANDO') {
+                const el = document.getElementById('chipPrevAguardando');
+                if (el) el.classList.add('active');
             } else {
-                box.style.display = 'none';
-                btn.innerHTML = `👁️ Inspecionar O.S. Futuras (${window.lastCountPrevisao || 0})`;
+                const el = document.getElementById('chipPrevTodos');
+                if (el) el.classList.add('active');
             }
+            renderTabelaPrevisionadas();
+        }
+
+        function filtrarTabelaPrevisionadas() {
+            const input = document.getElementById('searchPrevOS');
+            state.medFilters.searchPrev = input ? input.value.trim().toLowerCase() : '';
+            renderTabelaPrevisionadas();
+        }
+
+        function getChamadosPrevisionadosList() {
+            const casaAtual = state.medFilters.casa;
+            const ticketsCasa = state.tickets.filter(t => t.casa === casaAtual);
+            return ticketsCasa.filter(t => t.status_pagamento !== 'LIBERADO P/ NFE' && t.status !== 'CONCLUIDO');
         }
 
         function renderMedicoesPanel() {
@@ -1846,15 +1595,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const totalMedicao = medList.reduce((acc, t) => acc + (t.valor || 0), 0);
             const countMedicao = medList.length;
 
-            // 2. Cálculos da Previsão de Investimentos Futuros (O.S. em andamento / orçadas com valor > 0 não concluídas)
+            // 2. Cálculos da Previsão de Investimentos Futuros
             const ticketsCasa = state.tickets.filter(t => t.casa === casaAtual);
             const chamadosFuturos = ticketsCasa.filter(t => t.status_pagamento !== 'LIBERADO P/ NFE' && t.status !== 'CONCLUIDO' && (t.valor || 0) > 0);
             const valorPrevisaoFutura = chamadosFuturos.reduce((acc, t) => acc + (t.valor || 0), 0);
             const countPrevisaoFutura = chamadosFuturos.length;
             window.lastCountPrevisao = countPrevisaoFutura;
 
-            // Chamados abertos sem valor registrado
+            // Chamados abertos aguardando orçamento
             const countSemValor = ticketsCasa.filter(t => t.status !== 'CONCLUIDO' && ((t.valor || 0) === 0)).length;
+            const totalItensFuturos = countPrevisaoFutura + countSemValor;
 
             // 3. Teto, Total Comprometido e Saldo Estimado
             const tetoContrato = 1440000.00;
@@ -1952,35 +1702,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('medLegendaPrevisto').textContent = `R$ ${fmt(valorPrevisaoFutura)} (${pctPrevisto.toFixed(1)}%)`;
             document.getElementById('medLegendaSaldoEstimado').textContent = `R$ ${fmt(saldoEstimado)} (${pctSaldoEstimado}%)`;
 
-            // Atualizar Botão e Tabela de Inspeção de O.S. Futuras
+            // Atualizar Botão de Inspeção
             const btnInspect = document.getElementById('btnToggleInspect');
             if (btnInspect) {
-                const boxInspect = document.getElementById('medInspecaoBox');
-                if (boxInspect && boxInspect.style.display !== 'none') {
-                    btnInspect.innerHTML = '✖️ Ocultar O.S. Futuras';
-                } else {
-                    btnInspect.innerHTML = `👁️ Inspecionar O.S. Futuras (${countPrevisaoFutura})`;
-                }
+                btnInspect.innerHTML = `👁️ Inspecionar O.S. Futuras (${totalItensFuturos})`;
             }
 
-            const inspecaoBody = document.getElementById('medInspecaoBody');
-            if (inspecaoBody) {
-                if (chamadosFuturos.length === 0) {
-                    inspecaoBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94a3b8;">Nenhuma O.S. orçada pendente para esta entidade.</td></tr>';
-                } else {
-                    inspecaoBody.innerHTML = chamadosFuturos
-                        .sort((a, b) => b.valor - a.valor)
-                        .map(t => `
-                            <tr>
-                                <td style="padding: 6px 10px; font-weight: 700; color: #4338ca;">#${t.os}</td>
-                                <td style="padding: 6px 10px; font-weight: 600;">${t.unidade}</td>
-                                <td style="padding: 6px 10px; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
-                                <td style="padding: 6px 10px;"><span style="font-size: 10px; font-weight: 700; background: #e0e7ff; color: #3730a3; padding: 2px 6px; border-radius: 4px;">${t.status}</span></td>
-                                <td style="padding: 6px 10px; text-align: right; font-weight: 700; color: #d97706;">R$ ${fmt(t.valor)}</td>
-                            </tr>
-                        `).join('');
-                }
-            }
+            // Atualizar Badges das Sub-abas
+            const badgeCountLib = document.getElementById('badgeCountLiberadas');
+            if (badgeCountLib) badgeCountLib.textContent = countMedicao;
+
+            const badgeCountPrev = document.getElementById('badgeCountPrevisao');
+            if (badgeCountPrev) badgeCountPrev.textContent = totalItensFuturos;
 
             // 6. Renderizar Linhas da Tabela Oficial de Medições (Itens Liberados p/ NFE)
             let rowsHTML = medList
@@ -2037,307 +1770,226 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             `;
             document.getElementById('medTableFoot').innerHTML = footHTML;
 
-            // Faixa Inferior de Resumo com Alerta de Margem Livre
+            // Faixa Inferior de Resumo
             document.getElementById('medRibbonText').innerHTML = `
                 🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>${casaAtual}</u> | Competência: <u>${periodoLabel}</u> | O.S. Faturadas: <strong>${countMedicao} itens</strong> &nbsp;|&nbsp; 🛡️ Margem Real Livre Restante: <strong style="color: #15803d;">R$ ${fmt(saldoEstimado)}</strong>
             `;
             document.getElementById('medRibbonVal').textContent = `Total Medição: R$ ${fmt(totalMedicao)}`;
+
+            // Renderizar a Tabela de O.S. Previsionadas
+            renderTabelaPrevisionadas();
         }
 
-        function showCopyToast(msg) {
-            const toast = document.getElementById('copyToast');
-            if (!toast) return;
-            toast.textContent = msg;
-            toast.classList.add('show');
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 4000);
-        }
-
-        function showCopyToastMed(msg) {
-            const toast = document.getElementById('copyToastMed');
-            if (!toast) return;
-            toast.textContent = msg;
-            toast.classList.add('show');
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 4000);
-        }
-
-        function getMedicaoAtualList() {
+        function renderTabelaPrevisionadas() {
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
             const casaAtual = state.medFilters.casa;
-            const liberadosBase = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
-            const casaList = liberadosBase.filter(t => t.casa === casaAtual);
-            if (state.medFilters.periodo !== 'ANUAL') {
-                return casaList.filter(t => t.mes_emissao === state.medFilters.periodo);
+            let lista = getChamadosPrevisionadosList();
+
+            // Filtro por tipo de previsão
+            if (state.medFilters.filtroPrevStatus === 'ORCADAS') {
+                lista = lista.filter(t => (t.valor || 0) > 0);
+            } else if (state.medFilters.filtroPrevStatus === 'AGUARDANDO') {
+                lista = lista.filter(t => (t.valor || 0) === 0 || t.status === 'AGUARDANDO ORÇAMENTO');
             }
-            return casaList;
+
+            // Filtro por texto
+            if (state.medFilters.searchPrev) {
+                const s = state.medFilters.searchPrev;
+                lista = lista.filter(t => 
+                    t.os.toString().includes(s) || 
+                    t.unidade.toLowerCase().includes(s) || 
+                    t.descricao.toLowerCase().includes(s) ||
+                    t.status.toLowerCase().includes(s)
+                );
+            }
+
+            const totalPrev = lista.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const orcadasCount = lista.filter(t => (t.valor || 0) > 0).length;
+            const aguardCount = lista.filter(t => (t.valor || 0) === 0).length;
+
+            let rowsHTML = lista
+                .sort((a, b) => b.valor - a.valor)
+                .map(t => {
+                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                    const casaBadgeColor = t.casa === 'SESI' ? '#0284c7' : '#ea580c';
+                    const casaBadgeBg = t.casa === 'SESI' ? '#e0f2fe' : '#ffedd5';
+
+                    let condBadge = '';
+                    let valorTxt = '';
+                    if ((t.valor || 0) > 0) {
+                        condBadge = '<span class="badge-cond-orcado">🟡 ORÇADO (PREVISÃO)</span>';
+                        valorTxt = `<strong style="color: #4338ca; font-size: 13px;">R$ ${fmt(t.valor)}</strong>`;
+                    } else {
+                        condBadge = '<span class="badge-cond-aguardando">⏳ AGUARD. COTAÇÃO</span>';
+                        valorTxt = '<span style="color: #94a3b8; font-style: italic;">Aguardando</span>';
+                    }
+
+                    return `
+                        <tr>
+                            <td style="font-weight: 800; color: #4338ca;">#${t.os}</td>
+                            <td style="font-weight: 600;">${t.nr}</td>
+                            <td>
+                                <span style="display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: ${casaBadgeBg}; color: ${casaBadgeColor}; border: 1px solid ${casaBadgeColor}40;">
+                                    ${t.casa}
+                                </span>
+                            </td>
+                            <td><strong>${t.unidade}</strong></td>
+                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                            <td style="font-size: 12px; color: #475569;">${t.data_envio || '-'}</td>
+                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
+                            <td>${condBadge}</td>
+                            <td style="text-align: right;">${valorTxt}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+            if (lista.length === 0) {
+                rowsHTML = '<tr><td colspan="9" style="text-align:center; padding: 24px; color: #94a3b8;">Nenhuma O.S. com orçamento previsionado localizada para os filtros atuais.</td></tr>';
+            }
+
+            const tbody = document.getElementById('medPrevTableBody');
+            if (tbody) tbody.innerHTML = rowsHTML;
+
+            const tfoot = document.getElementById('medPrevTableFoot');
+            if (tfoot) {
+                tfoot.innerHTML = `
+                    <tr>
+                        <td colspan="4" style="color: #1e1b4b; font-size: 13px;">
+                            🛡️ TOTAL PREVISIONADO (${casaAtual}): <span style="color: #4338ca;">${lista.length} chamados em andamento</span>
+                        </td>
+                        <td colspan="4" style="text-align: right; color: #475569; font-size: 12px;">
+                            ${orcadasCount} O.S. orçadas (${aguardCount} aguard. cotação) &nbsp;|&nbsp; Total Previsionado:
+                        </td>
+                        <td style="text-align: right; font-size: 15px; color: #312e81; background: #e0e7ff; font-weight: 800;">
+                            R$ ${fmt(totalPrev)}
+                        </td>
+                    </tr>
+                `;
+            }
+
+            const ribbonText = document.getElementById('medPrevRibbonText');
+            if (ribbonText) {
+                ribbonText.innerHTML = `
+                    🛡️ <strong>Total Previsionado:</strong> Entidade: <u>${casaAtual}</u> | O.S. Orçadas: <strong>${orcadasCount} itens</strong> (${aguardCount} aguardando cotação) &nbsp;|&nbsp; Total da Previsão: <strong style="color: #4338ca;">R$ ${fmt(totalPrev)}</strong>
+                `;
+            }
+
+            const ribbonVal = document.getElementById('medPrevRibbonVal');
+            if (ribbonVal) {
+                ribbonVal.textContent = `Previsão Total: R$ ${fmt(totalPrev)}`;
+            }
         }
 
-        function executarCopiaClipboard(htmlContent, textContent, successMsg) {
-            try {
-                if (navigator.clipboard && window.ClipboardItem) {
-                    const blobHtml = new Blob([htmlContent], { type: 'text/html' });
-                    const blobText = new Blob([textContent], { type: 'text/plain' });
-                    const item = new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText });
-                    navigator.clipboard.write([item]).then(() => {
-                        showCopyToastMed(successMsg);
-                        showCopyToast(successMsg);
-                    }).catch(() => {
-                        copiarFallback(textContent);
-                        showCopyToastMed(successMsg);
-                    });
-                } else {
-                    copiarFallback(textContent);
-                    showCopyToastMed(successMsg);
-                }
-            } catch (err) {
-                copiarFallback(textContent);
-                showCopyToastMed(successMsg);
-            }
-        }
-
-        function copiarMedicaoEmail() {
-            const medList = getMedicaoAtualList();
+        function copiarMedPrevEmail() {
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
             const casaAtual = state.medFilters.casa;
-            const periodoLabel = state.medFilters.periodo === 'ANUAL' ? 'ACUMULADO ANUAL DO EXERCÍCIO' : state.medFilters.periodo;
+            const lista = getChamadosPrevisionadosList();
 
-            if (medList.length === 0) {
-                showCopyToastMed('⚠️ Nenhuma O.S. liberada para emissão de NF-e nesta medição.');
+            if (lista.length === 0) {
+                showCopyToastMed('⚠️ Nenhuma O.S. com orçamento previsionado para esta entidade.');
                 return;
             }
 
-            const totalMedicao = medList.reduce((acc, t) => acc + (t.valor || 0), 0);
-            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
-            const headerColor = casaAtual === 'SESI' ? '#0284c7' : '#ea580c';
-            const headerBorder = casaAtual === 'SESI' ? '#0369a1' : '#c2410c';
+            const totalPrev = lista.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const orcadas = lista.filter(t => (t.valor || 0) > 0);
 
             let html = `
                 <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5;">
-                    <div style="padding: 12px 16px; background-color: #f0fdf4; border-left: 5px solid #16a34a; margin-bottom: 14px; border-radius: 4px;">
-                        <h3 style="margin: 0 0 6px 0; color: #15803d; font-size: 16px;">📐 BOLETIM OFICIAL DE MEDIÇÃO CONTRATUAL</h3>
-                        <p style="margin: 0; font-size: 13px; color: #166534;">
-                            Relação de Ordens de Serviço conferidas e <strong>LIBERADAS PARA EMISSÃO DE NOTA FISCAL (NF-e)</strong>.
+                    <div style="padding: 12px 16px; background-color: #eef2ff; border-left: 5px solid #4f46e5; margin-bottom: 14px; border-radius: 4px;">
+                        <h3 style="margin: 0 0 6px 0; color: #3730a3; font-size: 16px;">🛡️ RELATÓRIO DE O.S. COM ORÇAMENTO PREVISIONADO (PREVISÃO FUTURA)</h3>
+                        <p style="margin: 0; font-size: 13px; color: #4338ca;">
+                            Acompanhamento de chamados em andamento e orçamentos programados que consumirão o teto contratual de R$ 1.440.000,00.
                         </p>
                     </div>
                     <p style="font-size: 13px; color: #334155; margin-bottom: 14px;">
-                        • <strong>Entidade Contratual (Casa):</strong> ${casaAtual}<br>
-                        • <strong>Mês de Competência / Período:</strong> ${periodoLabel}<br>
-                        • <strong>Quantidade de O.S. Faturadas:</strong> ${medList.length} chamados<br>
-                        • <strong>Valor Total da Medição:</strong> <span style="color: #15803d; font-weight: bold; font-size: 15px;">R$ ${fmt(totalMedicao)}</span>
+                        • <strong>Entidade (Casa):</strong> ${casaAtual}<br>
+                        • <strong>Total de O.S. em Andamento / Previsão:</strong> ${lista.length} chamados (${orcadas.length} com orçamento concluído)<br>
+                        • <strong>Valor Total Previsionado:</strong> <span style="color: #4338ca; font-weight: bold; font-size: 15px;">R$ ${fmt(totalPrev)}</span>
                     </p>
                     <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #cbd5e1; font-family: Arial, sans-serif;">
                         <thead>
-                            <tr style="background-color: ${headerColor}; color: #ffffff; text-align: left;">
-                                <th style="padding: 9px; border: 1px solid ${headerBorder};">O.S</th>
-                                <th style="padding: 9px; border: 1px solid ${headerBorder};">NR</th>
-                                <th style="padding: 9px; border: 1px solid ${headerBorder};">Entidade / CNPJ</th>
-                                <th style="padding: 9px; border: 1px solid ${headerBorder};">Unidade</th>
-                                <th style="padding: 9px; border: 1px solid ${headerBorder};">Descrição do Serviço</th>
-                                <th style="padding: 9px; border: 1px solid ${headerBorder};">Mês Competência</th>
-                                <th style="padding: 9px; border: 1px solid ${headerBorder}; text-align: center;">Status Liberação</th>
-                                <th style="padding: 9px; border: 1px solid ${headerBorder}; text-align: right;">Valor a Faturar (R$)</th>
+                            <tr style="background-color: #4338ca; color: #ffffff; text-align: left;">
+                                <th style="padding: 8px;">O.S</th>
+                                <th style="padding: 8px;">NR</th>
+                                <th style="padding: 8px;">Unidade</th>
+                                <th style="padding: 8px;">Descrição do Serviço</th>
+                                <th style="padding: 8px;">Data Abertura</th>
+                                <th style="padding: 8px;">Status O.S</th>
+                                <th style="padding: 8px; text-align: right;">Previsão (R$)</th>
                             </tr>
                         </thead>
                         <tbody>
             `;
 
-            let plain = `BOLETIM OFICIAL DE MEDIÇÃO — ${casaAtual} | COMPETÊNCIA: ${periodoLabel}\n`;
-            plain += `Total Liberado: R$ ${fmt(totalMedicao)} (${medList.length} O.S.)\n\n`;
-            plain += `O.S\tNR\tEntidade\tUnidade\tDescrição\tCompetência\tStatus Liberação\tValor a Faturar\n`;
+            let plain = `RELATÓRIO DE O.S. COM ORÇAMENTO PREVISIONADO — ${casaAtual}\n`;
+            plain += `Total Previsionado: R$ ${fmt(totalPrev)} (${orcadas.length} O.S. orçadas)\n\n`;
+            plain += `O.S\tNR\tUnidade\tDescrição\tData\tStatus\tPrevisão (R$)\n`;
 
-            medList
+            lista
                 .slice()
                 .sort((a, b) => b.valor - a.valor)
                 .forEach((t, i) => {
                     const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+                    const vTxt = (t.valor || 0) > 0 ? `R$ ${fmt(t.valor)}` : 'Aguardando';
                     html += `
                         <tr style="background-color: ${bg};">
-                            <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold; color: ${headerColor};">#${t.os}</td>
-                            <td style="padding: 8px; border: 1px solid #e2e8f0;">${t.nr}</td>
-                            <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">${t.casa}</td>
-                            <td style="padding: 8px; border: 1px solid #e2e8f0;"><strong>${t.unidade}</strong></td>
-                            <td style="padding: 8px; border: 1px solid #e2e8f0;">${t.descricao}</td>
-                            <td style="padding: 8px; border: 1px solid #e2e8f0;">${t.mes_emissao}</td>
-                            <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;">
-                                <span style="background: #dcfce7; color: #15803d; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #bbf7d0;">
-                                    ✅ LIBERADO P/ NFE
-                                </span>
-                            </td>
-                            <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: bold; color: #15803d;">R$ ${fmt(t.valor)}</td>
+                            <td style="padding: 8px; font-weight: bold; color: #4338ca;">#${t.os}</td>
+                            <td style="padding: 8px;">${t.nr}</td>
+                            <td style="padding: 8px;"><strong>${t.unidade}</strong></td>
+                            <td style="padding: 8px;">${t.descricao}</td>
+                            <td style="padding: 8px;">${t.data_envio || '-'}</td>
+                            <td style="padding: 8px;">${t.status}</td>
+                            <td style="padding: 8px; text-align: right; font-weight: bold; color: #4338ca;">${vTxt}</td>
                         </tr>
                     `;
-                    plain += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
+                    plain += `${t.os}\t${t.nr}\t${t.unidade}\t${t.descricao}\t${t.data_envio || '-'}\t${t.status}\t${vTxt}\n`;
                 });
 
             html += `
                         </tbody>
                         <tfoot>
-                            <tr style="background-color: #f1f5f9; font-weight: bold;">
-                                <td colspan="7" style="padding: 10px; border: 1px solid #cbd5e1; text-align: right; font-size: 13px;">
-                                    TOTAL DA MEDIÇÃO (${casaAtual} | ${periodoLabel}):
-                                </td>
-                                <td style="padding: 10px; border: 1px solid #cbd5e1; text-align: right; color: #15803d; font-size: 14px; font-weight: 800;">
-                                    R$ ${fmt(totalMedicao)}
-                                </td>
+                            <tr style="background-color: #e0e7ff; font-weight: bold;">
+                                <td colspan="6" style="padding: 10px; text-align: right;">TOTAL PREVISIONADO (${casaAtual}):</td>
+                                <td style="padding: 10px; text-align: right; color: #312e81; font-size: 14px;">R$ ${fmt(totalPrev)}</td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
             `;
-            plain += `\nTOTAL DA MEDIÇÃO: R$ ${fmt(totalMedicao)}\n`;
+            plain += `\nTOTAL PREVISIONADO: R$ ${fmt(totalPrev)}\n`;
 
-            executarCopiaClipboard(html, plain, `✅ Tabela da medição (${casaAtual} - ${periodoLabel}) copiada para E-mail!`);
+            executarCopiaClipboard(html, plain, `✅ Relação de O.S. Previsionadas (${casaAtual}) copiada para E-mail!`);
         }
 
-        function copiarMedicaoExcel() {
-            const medList = getMedicaoAtualList();
+        function copiarMedPrevExcel() {
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
             const casaAtual = state.medFilters.casa;
-            const periodoLabel = state.medFilters.periodo === 'ANUAL' ? 'ACUMULADO ANUAL DO EXERCÍCIO' : state.medFilters.periodo;
+            const lista = getChamadosPrevisionadosList();
 
-            if (medList.length === 0) {
-                showCopyToastMed('⚠️ Nenhuma O.S. liberada para emissão de NF-e nesta medição.');
+            if (lista.length === 0) {
+                showCopyToastMed('⚠️ Nenhuma O.S. com orçamento previsionado.');
                 return;
             }
 
-            const totalMedicao = medList.reduce((acc, t) => acc + (t.valor || 0), 0);
-            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const totalPrev = lista.reduce((acc, t) => acc + (t.valor || 0), 0);
 
-            // TSV ideal para colar direto no Excel ou Google Sheets mantendo cada valor em sua respectiva célula
-            let tsv = `O.S\tNR\tEntidade / CNPJ\tUnidade\tDescrição\tMês Competência\tStatus O.S\tLiberação p/ NFE\tValor a Faturar\n`;
-            
-            medList
+            let tsv = `O.S\tNR\tEntidade / CNPJ\tUnidade\tDescrição\tData Abertura\tStatus O.S\tCondição\tValor Previsionado\n`;
+            let html = `<table><thead><tr><th>O.S</th><th>NR</th><th>Entidade / CNPJ</th><th>Unidade</th><th>Descrição</th><th>Data Abertura</th><th>Status O.S</th><th>Condição</th><th>Valor Previsionado</th></tr></thead><tbody>`;
+
+            lista
                 .slice()
                 .sort((a, b) => b.valor - a.valor)
                 .forEach(t => {
-                    tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.mes_emissao}\tCONCLUIDO\tLIBERADO P/ NFE\t${fmt(t.valor)}\n`;
+                    const cond = (t.valor || 0) > 0 ? 'ORÇADO' : 'AGUARDANDO';
+                    const vTxt = (t.valor || 0) > 0 ? fmt(t.valor) : '0,00';
+                    tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.data_envio || '-'}\t${t.status}\t${cond}\t${vTxt}\n`;
+                    html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.data_envio || '-'}</td><td>${t.status}</td><td>${cond}</td><td>${vTxt}</td></tr>`;
                 });
 
-            tsv += `TOTAL MEDIÇÃO\t\t\t\t\t\t\t\t${fmt(totalMedicao)}\n`;
+            tsv += `TOTAL PREVISIONADO\t\t\t\t\t\t\t\t${fmt(totalPrev)}\n`;
+            html += `<tr><td colspan="8">TOTAL PREVISIONADO</td><td>${fmt(totalPrev)}</td></tr></tbody></table>`;
 
-            // Tabela HTML limpa sem mesclagens para que o Excel cole diretamente em colunas correspondentes
-            let html = `<table><thead><tr><th>O.S</th><th>NR</th><th>Entidade / CNPJ</th><th>Unidade</th><th>Descrição</th><th>Mês Competência</th><th>Status O.S</th><th>Liberação p/ NFE</th><th>Valor a Faturar</th></tr></thead><tbody>`;
-            medList
-                .slice()
-                .sort((a, b) => b.valor - a.valor)
-                .forEach(t => {
-                    html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>CONCLUIDO</td><td>LIBERADO P/ NFE</td><td>${fmt(t.valor)}</td></tr>`;
-                });
-            html += `<tr><td colspan="8">TOTAL MEDIÇÃO</td><td>${fmt(totalMedicao)}</td></tr></tbody></table>`;
-
-            executarCopiaClipboard(html, tsv, `✅ Medição (${casaAtual} - ${periodoLabel}) formatada para Excel! Pressione Ctrl + V na sua planilha.`);
-        }
-
-        function copiarTabelaEmail() {
-            const payList = getPayFiltered();
-            const liberados = payList.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
-
-            if (liberados.length === 0) {
-                showCopyToast('⚠️ Nenhuma O.S. liberada para emissão de NF-e neste filtro.');
-                return;
-            }
-
-            const valLiberado = liberados.reduce((acc, t) => acc + (t.valor || 0), 0);
-            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
-
-            const casaTxt = state.payFilters.casa ? state.payFilters.casa : 'SESI / SENAI';
-            const mesTxt = state.payFilters.mes ? state.payFilters.mes : 'Todos os Meses';
-
-            let html = `
-                <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.5;">
-                    <p style="font-size: 14px; margin-bottom: 8px;">
-                        Prezados,<br><br>
-                        Segue a relação de serviços conferidos e <strong>LIBERADOS PARA EMISSÃO DE NOTA FISCAL ELETRÔNICA (NF-e)</strong> referente à medição:
-                    </p>
-                    <p style="font-size: 13px; color: #555555; margin-bottom: 14px;">
-                        • <strong>Entidade / CNPJ:</strong> ${casaTxt}<br>
-                        • <strong>Mês de Competência:</strong> ${mesTxt}<br>
-                        • <strong>Quantidade de O.S. Liberadas:</strong> ${liberados.length}<br>
-                        • <strong>Valor Total Liberado para NF-e:</strong> <span style="color: #0ca30c; font-weight: bold;">R$ ${fmt(valLiberado)}</span>
-                    </p>
-                    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #cccccc; font-family: Arial, sans-serif;">
-                        <thead>
-                            <tr style="background-color: #0d6efd; color: #ffffff; text-align: left;">
-                                <th style="padding: 8px; border: 1px solid #b8daff;">O.S</th>
-                                <th style="padding: 8px; border: 1px solid #b8daff;">NR</th>
-                                <th style="padding: 8px; border: 1px solid #b8daff;">Entidade / CNPJ</th>
-                                <th style="padding: 8px; border: 1px solid #b8daff;">Unidade</th>
-                                <th style="padding: 8px; border: 1px solid #b8daff;">Descrição do Serviço</th>
-                                <th style="padding: 8px; border: 1px solid #b8daff;">Mês Competência</th>
-                                <th style="padding: 8px; border: 1px solid #b8daff;">Liberação p/ NF-e</th>
-                                <th style="padding: 8px; border: 1px solid #b8daff; text-align: right;">Valor Autorizado (R$)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-
-            let plain = `RELAÇÃO DE SERVIÇOS LIBERADOS PARA EMISSÃO DE NF-E\\nEntidade: ${casaTxt} | Competência: ${mesTxt}\\n\\n`;
-            plain += `O.S\\tNR\\tCasa\\tUnidade\\tDescrição\\tCompetência\\tStatus Liberação\\tValor Autorizado\\n`;
-
-            liberados.forEach((t, i) => {
-                const bg = i % 2 === 0 ? '#ffffff' : '#f8f9fa';
-
-                html += `
-                    <tr style="background-color: ${bg};">
-                        <td style="padding: 8px; border: 1px solid #dddddd; font-weight: bold; color: #0d6efd;">#${t.os}</td>
-                        <td style="padding: 8px; border: 1px solid #dddddd;">${t.nr}</td>
-                        <td style="padding: 8px; border: 1px solid #dddddd; font-weight: bold;">${t.casa}</td>
-                        <td style="padding: 8px; border: 1px solid #dddddd;"><strong>${t.unidade}</strong></td>
-                        <td style="padding: 8px; border: 1px solid #dddddd;">${t.descricao}</td>
-                        <td style="padding: 8px; border: 1px solid #dddddd;">${t.mes_emissao}</td>
-                        <td style="padding: 8px; border: 1px solid #dddddd; text-align: center;">
-                            <span style="background: #d1e7dd; color: #0f5132; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #badbcc;">
-                                ✅ LIBERADO P/ NFE
-                            </span>
-                        </td>
-                        <td style="padding: 8px; border: 1px solid #dddddd; text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
-                    </tr>
-                `;
-
-                plain += `${t.os}\\t${t.nr}\\t${t.casa}\\t${t.unidade}\\t${t.descricao}\\t${t.mes_emissao}\\tLIBERADO P/ NFE\\tR$ ${fmt(t.valor)}\\n`;
-            });
-
-            html += `
-                        </tbody>
-                        <tfoot>
-                            <tr style="background-color: #f1f5f9; font-weight: bold;">
-                                <td colspan="7" style="padding: 10px; border: 1px solid #cccccc; text-align: right;">VALOR TOTAL AUTORIZADO:</td>
-                                <td style="padding: 10px; border: 1px solid #cccccc; text-align: right; color: #0ca30c; font-size: 14px;">R$ ${fmt(valLiberado)}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            `;
-            plain += `\\nVALOR TOTAL AUTORIZADO: R$ ${fmt(valLiberado)}\\n`;
-
-            try {
-                if (navigator.clipboard && window.ClipboardItem) {
-                    const blobHtml = new Blob([html], { type: 'text/html' });
-                    const blobText = new Blob([plain], { type: 'text/plain' });
-                    const item = new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText });
-                    navigator.clipboard.write([item]).then(() => {
-                        showCopyToast('✅ Tabela copiada! Cole com Ctrl + V no seu e-mail.');
-                    }).catch(() => {
-                        copiarFallback(plain);
-                    });
-                } else {
-                    copiarFallback(plain);
-                }
-            } catch (err) {
-                copiarFallback(plain);
-            }
-        }
-
-        function copiarFallback(text) {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-            showCopyToast('✅ Dados copiados! Pressione Ctrl + V no seu e-mail.');
+            executarCopiaClipboard(html, tsv, `✅ O.S. Previsionadas (${casaAtual}) formatadas para Excel! Pressione Ctrl + V.`);
         }
 
         function imprimirPainel(elementId, titulo) {
@@ -2366,7 +2018,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             });
 
             // Remove botões e elementos interativos do clone impresso
-            clone.querySelectorAll('.no-print, button, .btn-print, .btn-action-copy, .btn-inspect-toggle, .copy-toast').forEach(n => n.remove());
+            clone.querySelectorAll('.no-print, button, .btn-print, .btn-action-copy, .btn-inspect-toggle, .copy-toast, .med-subtabs-bar').forEach(n => n.remove());
 
             // Remove limites de altura para que todas as linhas de tabelas sejam impressas sem cortes
             clone.querySelectorAll('.table-wrapper, [style*="max-height"]').forEach(d => {
@@ -2374,20 +2026,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 d.style.overflow = 'visible';
             });
 
-            // Carimbo oficial do cabeçalho de impressão
+            // Reseta quebras forçadas de página no clone
+            clone.style.pageBreakInside = 'auto';
+            clone.style.breakInside = 'auto';
+
+            // Carimbo oficial do cabeçalho de impressão (sem forçar quebra de página)
             const stamp = document.createElement('div');
             stamp.className = 'print-header-stamp';
             stamp.style.display = 'block';
-            stamp.style.marginBottom = '18px';
-            stamp.style.paddingBottom = '12px';
+            stamp.style.marginBottom = '12px';
+            stamp.style.paddingBottom = '8px';
             stamp.style.borderBottom = '2px solid #0f172a';
             stamp.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
-                        <h1 style="font-size: 18px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
-                        <h2 style="font-size: 14px; font-weight: 700; color: #0284c7; margin: 0;">${titulo || 'Relatório Oficial'}</h2>
+                        <h1 style="font-size: 17px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
+                        <h2 style="font-size: 13px; font-weight: 700; color: #0284c7; margin: 0;">${titulo || 'Relatório Oficial'}</h2>
                     </div>
-                    <div style="text-align: right; font-size: 11px; color: #64748b;">
+                    <div style="text-align: right; font-size: 10px; color: #64748b;">
                         <div><strong>Data de Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</div>
                         <div>Painel Integrado de Manutenção e Medições</div>
                     </div>
@@ -2412,55 +2068,134 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function imprimirPrevisaoFutura() {
-            const el = document.getElementById('medPrevisaoBox');
-            if (!el) return;
-
             const printSection = document.getElementById('printSection');
             if (!printSection) {
                 window.print();
                 return;
             }
 
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
             const casaAtual = state.medFilters.casa;
             const titulo = `Gestão de Risco & Previsão de O.S. Futuras - ${casaAtual}`;
 
-            // Clona o bloco de previsão
-            const clone = el.cloneNode(true);
-            clone.querySelectorAll('.no-print, button, .btn-print, .btn-action-copy, .btn-inspect-toggle').forEach(n => n.remove());
+            // Coleta dados financeiros atualizados
+            const liberadosBase = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE' && t.casa === casaAtual);
+            const totalAnualCasa = liberadosBase.reduce((acc, t) => acc + (t.valor || 0), 0);
+            
+            const listaPrev = getChamadosPrevisionadosList();
+            const totalPrev = listaPrev.reduce((acc, t) => acc + (t.valor || 0), 0);
+            const orcadas = listaPrev.filter(t => (t.valor || 0) > 0);
+            const aguard = listaPrev.filter(t => (t.valor || 0) === 0);
 
-            // Garante que a lista de O.S. futuras esteja visível e desdobrada por completo na folha de impressão
-            const boxInspect = clone.querySelector('#medInspecaoBox');
-            if (boxInspect) {
-                boxInspect.style.display = 'block';
-            }
-            clone.querySelectorAll('.table-wrapper, [style*="max-height"]').forEach(d => {
-                d.style.maxHeight = 'none';
-                d.style.overflow = 'visible';
-            });
+            const teto = 1440000.00;
+            const totalComprometido = totalAnualCasa + totalPrev;
+            const saldoEstimado = teto - totalComprometido;
+            const pctComprometido = ((totalComprometido / teto) * 100).toFixed(1);
 
-            // Carimbo de cabeçalho específico para Gestão de Risco e Previsão
+            // Carimbo de cabeçalho específico (sem salto de página)
             const stamp = document.createElement('div');
             stamp.className = 'print-header-stamp';
             stamp.style.display = 'block';
-            stamp.style.marginBottom = '18px';
-            stamp.style.paddingBottom = '12px';
+            stamp.style.marginBottom = '12px';
+            stamp.style.paddingBottom = '8px';
             stamp.style.borderBottom = '2px solid #0f172a';
             stamp.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
-                        <h1 style="font-size: 18px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
-                        <h2 style="font-size: 14px; font-weight: 700; color: #4338ca; margin: 0;">🛡️️ Relatório de Previsão de Medições Futuras & Saldo Estimado (${casaAtual})</h2>
+                        <h1 style="font-size: 17px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
+                        <h2 style="font-size: 13px; font-weight: 700; color: #4338ca; margin: 0;">🛡 Relatório de Gestão de Risco & Previsão de O.S. Futuras (${casaAtual})</h2>
                     </div>
-                    <div style="text-align: right; font-size: 11px; color: #64748b;">
+                    <div style="text-align: right; font-size: 10px; color: #64748b;">
                         <div><strong>Data de Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</div>
                         <div>Teto Contratual: R$ 1.440.000,00 por Entidade</div>
                     </div>
                 </div>
             `;
 
+            // Bloco de Resumo Financeiro Estruturado em Grade (inicia imediatamente na página 1)
+            const resumoDiv = document.createElement('div');
+            resumoDiv.style.display = 'grid';
+            resumoDiv.style.gridTemplateColumns = 'repeat(4, 1fr)';
+            resumoDiv.style.gap = '10px';
+            resumoDiv.style.marginBottom = '14px';
+            resumoDiv.innerHTML = `
+                <div style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #f8fafc;">
+                    <div style="font-size: 10px; text-transform: uppercase; font-weight: 700; color: #64748b;">Teto do Contrato</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #0f172a;">R$ ${fmt(teto)}</div>
+                    <div style="font-size: 10px; color: #64748b;">Limite homologado</div>
+                </div>
+                <div style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #f0fdf4; border-left: 3px solid #10b981;">
+                    <div style="font-size: 10px; text-transform: uppercase; font-weight: 700; color: #166534;">Já Faturado / Medido</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #15803d;">R$ ${fmt(totalAnualCasa)}</div>
+                    <div style="font-size: 10px; color: #166534;">${liberadosBase.length} O.S. liberadas</div>
+                </div>
+                <div style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #eef2ff; border-left: 3px solid #6366f1;">
+                    <div style="font-size: 10px; text-transform: uppercase; font-weight: 700; color: #3730a3;">Previsão Futura</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #4338ca;">R$ ${fmt(totalPrev)}</div>
+                    <div style="font-size: 10px; color: #3730a3;">${orcadas.length} O.S. orçadas</div>
+                </div>
+                <div style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #ecfdf5; border-left: 3px solid #059669;">
+                    <div style="font-size: 10px; text-transform: uppercase; font-weight: 700; color: #065f46;">Saldo Estimado Livre</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #047857;">R$ ${fmt(saldoEstimado)}</div>
+                    <div style="font-size: 10px; color: #065f46;">Margem real restante</div>
+                </div>
+            `;
+
+            // Tabela Completa de O.S. Previsionadas para Impressão
+            const tableDiv = document.createElement('div');
+            let rowsHtml = listaPrev
+                .slice()
+                .sort((a, b) => b.valor - a.valor)
+                .map((t, i) => {
+                    const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+                    const vTxt = (t.valor || 0) > 0 ? `R$ ${fmt(t.valor)}` : 'Aguardando';
+                    const cond = (t.valor || 0) > 0 ? 'ORÇADO' : 'AGUARDANDO';
+                    return `
+                        <tr style="background-color: ${bg};">
+                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: bold; color: #4338ca;">#${t.os}</td>
+                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.nr}</td>
+                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;"><strong>${t.unidade}</strong></td>
+                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.descricao}</td>
+                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.data_envio || '-'}</td>
+                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.status}</td>
+                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px; font-weight: bold;">${cond}</td>
+                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold; color: #312e81;">${vTxt}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+            tableDiv.innerHTML = `
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #cbd5e1;">
+                    <thead>
+                        <tr style="background-color: #4338ca; color: #ffffff; text-align: left;">
+                            <th style="padding: 7px 8px;">O.S</th>
+                            <th style="padding: 7px 8px;">NR</th>
+                            <th style="padding: 7px 8px;">Unidade</th>
+                            <th style="padding: 7px 8px;">Descrição do Serviço</th>
+                            <th style="padding: 7px 8px;">Abertura</th>
+                            <th style="padding: 7px 8px;">Status O.S</th>
+                            <th style="padding: 7px 8px;">Condição</th>
+                            <th style="padding: 7px 8px; text-align: right;">Previsão (R$)</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                    <tfoot>
+                        <tr style="background-color: #e0e7ff; font-weight: bold;">
+                            <td colspan="7" style="padding: 8px; border: 1px solid #cbd5e1; text-align: right;">
+                                TOTAL PREVISIONADO (${casaAtual} • ${listaPrev.length} O.S.):
+                            </td>
+                            <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: right; color: #312e81; font-size: 12px;">
+                                R$ ${fmt(totalPrev)}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            `;
+
             printSection.innerHTML = '';
             printSection.appendChild(stamp);
-            printSection.appendChild(clone);
+            printSection.appendChild(resumoDiv);
+            printSection.appendChild(tableDiv);
 
             document.body.classList.add('is-printing-isolated');
             const tituloOriginal = document.title;
