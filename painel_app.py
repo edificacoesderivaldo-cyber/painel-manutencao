@@ -781,20 +781,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .footer { margin-top: 30px; padding: 15px; text-align: center; color: #999; font-size: 12px; }
         .print-header-stamp { display: none; }
         
+        @media screen {
+            #printSection { display: none !important; }
+        }
+
         @media print {
-            body { background: white !important; color: #000 !important; }
-            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, #medCasaFilters, #medPeriodoFilters, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav { display: none !important; }
-            .tab-view { display: block !important; }
+            body { background: #ffffff !important; color: #000000 !important; }
+            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, #medCasaFilters, #medPeriodoFilters, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav, .btn-inspect-toggle { display: none !important; }
             .table-wrapper { max-height: none !important; overflow: visible !important; border: none !important; }
-            .print-header-stamp { display: block !important; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #333; }
-            .print-header-stamp h2 { font-size: 18px; color: #111; margin: 0 0 4px 0; }
-            .print-header-stamp p { font-size: 12px; color: #555; margin: 0; }
-            body.is-printing-panel .container > *:not(.target-print-active),
-            body.is-printing-panel .tab-view > *:not(.target-print-active) { display: none !important; }
-            body.is-printing-panel .target-print-active { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; border: none !important; box-shadow: none !important; }
-            .card, .kpi-card, .medicoes-card { box-shadow: none !important; border: 1px solid #ccc !important; page-break-inside: avoid; }
-            table { page-break-inside: auto; }
-            tr { page-break-inside: avoid; page-break-after: auto; }
+            .card, .kpi-card, .medicoes-card, .previsao-box { box-shadow: none !important; border: 1px solid #cbd5e1 !important; page-break-inside: avoid; }
+            table { page-break-inside: auto !important; width: 100% !important; }
+            tr { page-break-inside: avoid !important; page-break-after: auto !important; }
+            thead { display: table-header-group !important; }
+            tfoot { display: table-footer-group !important; }
+
+            /* Modo de Impressão Isolada (Corrige a tela em branco) */
+            body.is-printing-isolated > .container { display: none !important; }
+            body.is-printing-isolated #printSection { display: block !important; width: 100% !important; margin: 0 !important; padding: 10px !important; }
+            body:not(.is-printing-isolated) #printSection { display: none !important; }
         }
     </style>
 </head>
@@ -1103,14 +1107,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
 
                 <!-- Painel de Previsão de Medições Futuras & Saldo Estimado -->
-                <div class="previsao-box">
+                <div class="previsao-box" id="medPrevisaoBox">
                     <div class="previsao-header">
                         <div style="font-size: 13px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
                             🛡️ GESTÃO DE RISCO: PREVISÃO DE MEDIÇÕES FUTURAS & SALDO ESTIMADO (<span id="medPrevCasaLabel" style="color: #0284c7;">SENAI</span>)
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                             <button type="button" class="btn-inspect-toggle no-print" onclick="toggleInspecaoPrevisao()" id="btnToggleInspect">
                                 👁️ Inspecionar O.S. Futuras (0)
+                            </button>
+                            <button type="button" class="btn-print no-print" onclick="imprimirPrevisaoFutura()" style="border-color: #4338ca; color: #4338ca; padding: 5px 12px; font-size: 11px; font-weight: 700;" title="Imprimir Relatório de Previsão de O.S. Futuras e Saldo Estimado">
+                                🖨️ Imprimir O.S. Futuras
                             </button>
                             <div id="medRiscoBadge" style="font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 14px; background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;">
                                 🟢 SALDO ESTIMADO SEGURO
@@ -1167,9 +1174,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                     <!-- Gaveta de Inspeção das O.S. Futuras -->
                     <div id="medInspecaoBox" style="display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed #cbd5e1;">
-                        <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                             <span>🔍 O.S. com Investimentos em Andamento / Previsão Futura:</span>
-                            <span style="font-size: 11px; color: #64748b;">(Itens orçados ainda não liberados p/ NFE)</span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 11px; color: #64748b;">(Itens orçados ainda não liberados p/ NFE)</span>
+                                <button type="button" class="btn-print no-print" onclick="imprimirPrevisaoFutura()" style="border-color: #4338ca; color: #4338ca; padding: 3px 10px; font-size: 11px; font-weight: 700;">
+                                    🖨️ Imprimir Esta Lista
+                                </button>
+                            </div>
                         </div>
                         <div style="max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
                             <table style="font-size: 11px; width: 100%; border-collapse: collapse;">
@@ -1317,6 +1329,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <p>Atualizado em <span id="updateTime"></span> | Painel Integrado de Gestão Predial, Medições & Faturamento SESI/SENAI</p>
         </div>
     </div>
+
+    <!-- Contêiner dedicado para impressão isolada (evita página em branco) -->
+    <div id="printSection"></div>
 
     <script>
         const COLOR_MAP = {
@@ -2329,41 +2344,141 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const el = document.getElementById(elementId);
             if (!el) return;
 
-            const parentView = el.closest('.tab-view');
-            if (parentView) parentView.style.display = 'block';
+            const printSection = document.getElementById('printSection');
+            if (!printSection) {
+                window.print();
+                return;
+            }
 
-            document.querySelectorAll('.target-print-active').forEach(n => n.classList.remove('target-print-active'));
-            document.querySelectorAll('.print-header-stamp').forEach(n => n.remove());
+            // Clona o elemento selecionado para o contêiner de impressão isolado
+            const clone = el.cloneNode(true);
 
+            // Preserva e transfere o desenho de gráficos em canvas se houver
+            const originalCanvases = el.querySelectorAll('canvas');
+            const clonedCanvases = clone.querySelectorAll('canvas');
+            originalCanvases.forEach((origCanvas, i) => {
+                if (clonedCanvases[i]) {
+                    const destCtx = clonedCanvases[i].getContext('2d');
+                    clonedCanvases[i].width = origCanvas.width;
+                    clonedCanvases[i].height = origCanvas.height;
+                    destCtx.drawImage(origCanvas, 0, 0);
+                }
+            });
+
+            // Remove botões e elementos interativos do clone impresso
+            clone.querySelectorAll('.no-print, button, .btn-print, .btn-action-copy, .btn-inspect-toggle, .copy-toast').forEach(n => n.remove());
+
+            // Remove limites de altura para que todas as linhas de tabelas sejam impressas sem cortes
+            clone.querySelectorAll('.table-wrapper, [style*="max-height"]').forEach(d => {
+                d.style.maxHeight = 'none';
+                d.style.overflow = 'visible';
+            });
+
+            // Carimbo oficial do cabeçalho de impressão
             const stamp = document.createElement('div');
             stamp.className = 'print-header-stamp';
+            stamp.style.display = 'block';
+            stamp.style.marginBottom = '18px';
+            stamp.style.paddingBottom = '12px';
+            stamp.style.borderBottom = '2px solid #0f172a';
             stamp.innerHTML = `
-                <h2>🏢 SESI / SENAI — Gestão de Manutenção Predial</h2>
-                <p><strong>Relatório:</strong> ${titulo || 'Painel'} | <strong>Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</p>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <h1 style="font-size: 18px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
+                        <h2 style="font-size: 14px; font-weight: 700; color: #0284c7; margin: 0;">${titulo || 'Relatório Oficial'}</h2>
+                    </div>
+                    <div style="text-align: right; font-size: 11px; color: #64748b;">
+                        <div><strong>Data de Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</div>
+                        <div>Painel Integrado de Manutenção e Medições</div>
+                    </div>
+                </div>
             `;
-            el.insertBefore(stamp, el.firstChild);
 
-            el.classList.add('target-print-active');
-            document.body.classList.add('is-printing-panel');
+            printSection.innerHTML = '';
+            printSection.appendChild(stamp);
+            printSection.appendChild(clone);
 
+            document.body.classList.add('is-printing-isolated');
             const tituloOriginal = document.title;
-            if (titulo) {
-                document.title = `${titulo} - SESI SENAI`;
-            }
+            if (titulo) document.title = `${titulo} - SESI SENAI`;
 
             window.print();
 
             setTimeout(() => {
-                document.body.classList.remove('is-printing-panel');
-                el.classList.remove('target-print-active');
-                if (stamp.parentNode) stamp.remove();
+                document.body.classList.remove('is-printing-isolated');
+                printSection.innerHTML = '';
+                document.title = tituloOriginal;
+            }, 1000);
+        }
+
+        function imprimirPrevisaoFutura() {
+            const el = document.getElementById('medPrevisaoBox');
+            if (!el) return;
+
+            const printSection = document.getElementById('printSection');
+            if (!printSection) {
+                window.print();
+                return;
+            }
+
+            const casaAtual = state.medFilters.casa;
+            const titulo = `Gestão de Risco & Previsão de O.S. Futuras - ${casaAtual}`;
+
+            // Clona o bloco de previsão
+            const clone = el.cloneNode(true);
+            clone.querySelectorAll('.no-print, button, .btn-print, .btn-action-copy, .btn-inspect-toggle').forEach(n => n.remove());
+
+            // Garante que a lista de O.S. futuras esteja visível e desdobrada por completo na folha de impressão
+            const boxInspect = clone.querySelector('#medInspecaoBox');
+            if (boxInspect) {
+                boxInspect.style.display = 'block';
+            }
+            clone.querySelectorAll('.table-wrapper, [style*="max-height"]').forEach(d => {
+                d.style.maxHeight = 'none';
+                d.style.overflow = 'visible';
+            });
+
+            // Carimbo de cabeçalho específico para Gestão de Risco e Previsão
+            const stamp = document.createElement('div');
+            stamp.className = 'print-header-stamp';
+            stamp.style.display = 'block';
+            stamp.style.marginBottom = '18px';
+            stamp.style.paddingBottom = '12px';
+            stamp.style.borderBottom = '2px solid #0f172a';
+            stamp.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <h1 style="font-size: 18px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
+                        <h2 style="font-size: 14px; font-weight: 700; color: #4338ca; margin: 0;">🛡️️ Relatório de Previsão de Medições Futuras & Saldo Estimado (${casaAtual})</h2>
+                    </div>
+                    <div style="text-align: right; font-size: 11px; color: #64748b;">
+                        <div><strong>Data de Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</div>
+                        <div>Teto Contratual: R$ 1.440.000,00 por Entidade</div>
+                    </div>
+                </div>
+            `;
+
+            printSection.innerHTML = '';
+            printSection.appendChild(stamp);
+            printSection.appendChild(clone);
+
+            document.body.classList.add('is-printing-isolated');
+            const tituloOriginal = document.title;
+            document.title = `${titulo} - SESI SENAI`;
+
+            window.print();
+
+            setTimeout(() => {
+                document.body.classList.remove('is-printing-isolated');
+                printSection.innerHTML = '';
                 document.title = tituloOriginal;
             }, 1000);
         }
 
         function imprimirRelatorioGeral() {
-            document.body.classList.remove('is-printing-panel');
-            document.querySelectorAll('.target-print-active').forEach(n => n.classList.remove('target-print-active'));
+            document.body.classList.remove('is-printing-isolated');
+            const printSection = document.getElementById('printSection');
+            if (printSection) printSection.innerHTML = '';
             window.print();
         }
 
