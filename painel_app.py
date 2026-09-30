@@ -4,7 +4,6 @@ import json
 import re
 from datetime import datetime
 
-# Configuração da página do Streamlit
 st.set_page_config(
     page_title="Painel de Manutenção Predial",
     page_icon="📊",
@@ -21,14 +20,12 @@ if not uploaded_file:
     st.info("👉 Clique no botão acima para fazer upload da sua planilha Excel com os chamados de manutenção.")
     st.stop()
 
-# Leitura da aba O.S
 try:
     df_os = pd.read_excel(uploaded_file, sheet_name='O.S', header=2)
 except Exception as e:
     st.error(f"❌ Erro ao carregar aba 'O.S': {e}")
     st.stop()
 
-# Leitura da aba SALDO (se existente)
 try:
     df_saldo = pd.read_excel(uploaded_file, sheet_name='SALDO', header=0)
 except Exception:
@@ -52,7 +49,6 @@ unidade_col = next((c for c in df_os.columns if 'UNIDADE' in c.upper()), 'UNIDAD
 df_os['STATUS'] = df_os[status_col].apply(norm_status)
 df_os['UNIDADE'] = df_os[unidade_col].apply(norm_unidade)
 
-# Identificação e conversão de valores e números de O.S
 valor_col = next((c for c in df_os.columns if 'VALOR' in c.upper() and 'INICIAL' in c.upper()), None)
 if valor_col:
     df_os[valor_col] = pd.to_numeric(df_os[valor_col], errors='coerce').fillna(0.0)
@@ -68,14 +64,13 @@ def parse_data_br(val):
     """
     Interpreta datas estritamente no padrão brasileiro DD/MM/AAAA.
     Corrige automaticamente células em que o Excel com regionalização US
-    inverteu o Dia pelo Mês quando o dia digitado é <= 12 (ex: 08/09 virando 09 de Agosto).
+    inverteu o Dia pelo Mês quando o dia digitado é <= 12.
     """
     if pd.isna(val) or val == '' or str(val).strip().lower() in ['nan', 'nat', '-', 'none']:
         return None
 
     hoje_ref = datetime.now()
 
-    # 1. Se recebido como texto / string
     if isinstance(val, str):
         val_clean = val.strip()
         match_br = re.match(r'^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})', val_clean)
@@ -93,17 +88,14 @@ def parse_data_br(val):
         except Exception:
             pass
 
-    # 2. Se recebido como objeto datetime/Timestamp do Excel
     if isinstance(val, (datetime, pd.Timestamp)):
         y = val.year
         m = val.month
         d = val.day
 
-        # Se d > 12, com certeza 'd' é o dia
         if d > 12:
             return pd.Timestamp(year=y, month=m, day=d)
 
-        # Se d <= 12 e m <= 12, reverte inversão de digitação regional do Excel
         dt_orig = pd.Timestamp(year=y, month=m, day=d)
         dt_swapped = None
         try:
@@ -166,7 +158,6 @@ def obter_peso_mes(m_str):
 
     return ano * 100 + mes_num
 
-# Coleta exclusivamente os meses que existem na coluna de competência
 meses_existentes = []
 if mes_col:
     valores_mes = df_os[mes_col].dropna().astype(str).str.strip().unique()
@@ -355,7 +346,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .header h1 { font-size: 24px; margin: 0; }
         .header p { color: #666; margin: 0; font-size: 14px; }
         
-        /* Barra de Navegação por Abas */
         .nav-tabs-bar {
             display: flex;
             gap: 10px;
@@ -385,7 +375,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 2px 6px rgba(13, 110, 253, 0.25);
         }
 
-        /* Cards de Atalho do Painel Inicial */
         .portal-cards-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -515,7 +504,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             letter-spacing: 0.5px;
         }
 
-        /* Estilos do Módulo de Medições e Gestão de Risco */
         .medicoes-card {
             background: #ffffff;
             border-radius: 10px;
@@ -781,7 +769,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .footer { margin-top: 30px; padding: 15px; text-align: center; color: #999; font-size: 12px; }
         .print-header-stamp { display: none; }
         
-        /* Sub-abas do Módulo de Medições */
         .med-subtabs-bar {
             display: flex;
             gap: 10px;
@@ -854,22 +841,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             #printSection { display: none !important; }
         }
 
+        @page {
+            size: A4 landscape;
+            margin: 8mm 8mm 8mm 8mm;
+        }
+
         @media print {
-            body { background: #ffffff !important; color: #000000 !important; }
-            .no-print, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, #medCasaFilters, #medPeriodoFilters, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav, .btn-inspect-toggle, .med-subtabs-bar { display: none !important; }
+            html, body {
+                width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+            }
+            .no-print, button, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, #medCasaFilters, #medPeriodoFilters, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav, .btn-inspect-toggle, .med-subtabs-bar { display: none !important; }
             .table-wrapper { max-height: none !important; overflow: visible !important; border: none !important; }
             
-            /* CRÍTICO: Permitir que contêineres e cartões quebrem de página naturalmente para nunca gerar página em branco */
             .card, .kpi-card, .medicoes-card, .previsao-box, #printSection, #printSection > div { 
                 box-shadow: none !important; 
-                border: 1px solid #cbd5e1 !important; 
+                border: none !important;
                 page-break-inside: auto !important; 
                 break-inside: auto !important;
             }
             
-            /* Evitar quebra apenas em pequenos cartões e linhas individuais da tabela */
             tr { page-break-inside: avoid !important; break-inside: avoid !important; }
-            .mini-kpi-med { page-break-inside: avoid !important; break-inside: avoid !important; margin-bottom: 8px !important; }
+            .mini-kpi-med { page-break-inside: avoid !important; break-inside: avoid !important; margin-bottom: 6px !important; }
             
             table { page-break-inside: auto !important; width: 100% !important; border-collapse: collapse !important; }
             thead { display: table-header-group !important; }
@@ -879,11 +876,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 display: block !important; 
                 page-break-after: avoid !important; 
                 break-after: avoid !important;
-                margin-bottom: 12px !important; 
-                padding-bottom: 8px !important; 
+                margin-bottom: 8px !important; 
+                padding-bottom: 6px !important; 
+                border-bottom: 2px solid #0f172a !important;
             }
 
-            /* Modo de Impressão Isolada sem vácuo inicial */
             body.is-printing-isolated > .container { display: none !important; }
             body.is-printing-isolated #printSection { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
             body:not(.is-printing-isolated) #printSection { display: none !important; }
@@ -892,7 +889,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
     <div class="container">
-        <!-- Header Geral -->
         <div class="header">
             <div>
                 <h1>📊 Painel de Manutenção Predial & Liberação de Pagamentos</h1>
@@ -905,7 +901,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- Barra de Navegação por Abas -->
         <div class="nav-tabs-bar no-print">
             <button class="nav-tab-btn active" id="nav-inicial" onclick="switchTab('inicial')">
                 📊 Painel Inicial (Visão Geral)
@@ -921,12 +916,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </button>
         </div>
 
-        <!-- ======================================================= -->
-        <!-- ABA 1: PAINEL INICIAL (VISÃO GERAL)                     -->
-        <!-- ======================================================= -->
         <div class="tab-view" id="view-inicial" style="display: block;">
-            
-            <!-- Cards de Acesso Rápido aos Painéis -->
             <div class="portal-cards-grid no-print">
                 <div class="portal-card portal-card-pay" onclick="switchTab('pagamentos')">
                     <div style="display: flex; align-items: center; gap: 14px;">
@@ -962,10 +952,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- KPIs Gerais -->
             <div class="kpi-section" id="kpis"></div>
 
-            <!-- Saldo em Contrato + Tempo Médio em Aberto -->
             <div class="grid2" id="painelContratosPrazos">
                 <div class="card" style="margin-bottom: 0;">
                     <div class="card-title-bar">
@@ -984,7 +972,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Distribuição de Status -->
             <div class="card" id="painelStatus">
                 <div class="card-title-bar">
                     <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📈 Distribuição de Status</div>
@@ -995,13 +982,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Filtros Globais Interativos -->
             <div class="card no-print">
                 <div class="card-title">🔍 Filtros Interativos Globais</div>
                 <div class="filter-section" id="filters"></div>
             </div>
 
-            <!-- Chamados por Unidade (SESI à esquerda e SENAI à direita de A a Z) -->
             <div class="card" id="painelUnidades">
                 <div class="card-title-bar">
                     <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">🏢 Chamados por Unidade (com investimento)</div>
@@ -1014,9 +999,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- ======================================================= -->
-        <!-- ABA 2: PAINEL DE CONTROLE DE PAGAMENTOS                -->
-        <!-- ======================================================= -->
         <div class="tab-view" id="view-pagamentos" style="display: none;">
             <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
@@ -1045,7 +1027,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Mini KPIs de Pagamento -->
                 <div class="kpi-section" style="margin-bottom: 20px;">
                     <div class="kpi-card" style="border-left: 4px solid var(--success);">
                         <div class="kpi-label">Liberado para Emitir NFE</div>
@@ -1069,7 +1050,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Filtros de Entidade e Mês -->
                 <div class="no-print" style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
                     <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 8px;">
                         🏛️ Filtrar por Entidade / CNPJ de Faturamento (Casa):
@@ -1087,7 +1067,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <div class="filter-group" id="payStatusFilters"></div>
                 </div>
 
-                <!-- Tabela de Liberação de Pagamentos com Scroll Interno -->
                 <div class="table-wrapper">
                     <table id="payTable">
                         <thead>
@@ -1108,13 +1087,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </table>
                 </div>
 
-                <!-- Faixa de Resumo do Fechamento -->
                 <div id="paySummaryFooter" style="margin-top: 18px; padding: 14px 20px; background: #e8f4fd; border-radius: 8px; border-left: 5px solid #0d6efd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div id="paySummaryFooterText" style="font-size: 14px; font-weight: 600; color: #0a58ca;">Fechamento de Faturamento</div>
                     <div id="paySummaryFooterVal" style="font-size: 18px; font-weight: 800; color: #0ca30c;">R$ 0,00</div>
                 </div>
 
-                <!-- Botão de Cópia Única para E-mail -->
                 <div class="no-print" style="margin-top: 16px; padding: 14px 18px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                     <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                         <button class="btn-action-copy" onclick="copiarTabelaEmail()" title="Copia apenas as O.S. liberadas para emissão de NF-e formatadas para colar no e-mail">
@@ -1130,9 +1107,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- ======================================================= -->
-        <!-- ABA 3: MÓDULO MEDIÇÕES (LIVRO OFICIAL DO CONTRATO)      -->
-        <!-- ======================================================= -->
         <div class="tab-view" id="view-medicoes" style="display: none;">
             <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
                 <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
@@ -1164,7 +1138,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- KPIs Financeiros da Medição e Contrato -->
                 <div style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">
                     📋 Medições Efetivadas & Faturamento Homologado (Status Atual):
                 </div>
@@ -1194,7 +1167,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Painel de Previsão de Medições Futuras & Saldo Estimado -->
                 <div class="previsao-box" id="medPrevisaoBox">
                     <div class="previsao-header">
                         <div style="font-size: 13px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
@@ -1213,7 +1185,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </div>
                     </div>
 
-                    <!-- 3 Cards de Projeção Financeira -->
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 16px;">
                         <div class="mini-kpi-med indigo">
                             <div class="kpi-label" style="color: #4f46e5; font-weight: 700;">Previsão em Investimentos (O.S. Futuras)</div>
@@ -1234,7 +1205,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </div>
                     </div>
 
-                    <!-- Barra de Consumo do Teto Contratual -->
                     <div>
                         <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 6px;">
                             <span>Consumo do Teto Contratual (R$ 1.440.000,00):</span>
@@ -1261,10 +1231,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Painel de Filtros de Casa e Período -->
                 <div class="no-print" style="background: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
                     <div style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 8px; text-transform: uppercase;">
-                        🏛️ Entidade Contratual (Casa):
+                        🏛️️ Entidade Contratual (Casa):
                     </div>
                     <div class="filter-group" id="medCasaFilters" style="margin-bottom: 14px;"></div>
 
@@ -1274,7 +1243,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <div class="filter-group" id="medPeriodoFilters"></div>
                 </div>
 
-                <!-- Barra de Navegação entre Medições Homologadas e O.S. Previsionadas -->
                 <div class="med-subtabs-bar no-print">
                     <button type="button" class="med-subtab-btn active" id="btnSubtabLiberadas" onclick="switchMedSubTab('liberadas')">
                         📋 1. Medições Homologadas (LIBERADO P/ NFE) <span class="med-subtab-badge" id="badgeCountLiberadas">0</span>
@@ -1287,7 +1255,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </button>
                 </div>
 
-                <!-- SEÇÃO 1: TABELA OFICIAL DE MEDIÇÕES (LIBERADAS P/ NFE) -->
                 <div id="sectionMedLiberadas">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
                         <div style="font-size: 14px; font-weight: 800; color: #0284c7; display: flex; align-items: center; gap: 6px;">
@@ -1318,7 +1285,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </table>
                     </div>
 
-                    <!-- Faixa de Resumo da Medição Homologada -->
                     <div class="summary-ribbon">
                         <div class="left" id="medRibbonText">
                             🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>SESI</u> | Competência: <u>SETEMBRO</u> | Aptos para NFE: <strong>0 chamados</strong>
@@ -1328,7 +1294,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </div>
                     </div>
 
-                    <!-- Botões de Cópia da Medição Atual -->
                     <div class="no-print" style="margin-top: 14px; padding: 12px 16px; background: #f8fafc; border: 1px dashed #0284c7; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                         <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                             <button class="btn-action-copy" style="background: #0284c7;" onclick="copiarMedicaoEmail()" title="Copia a medição selecionada formatada com layout executivo para colar no e-mail (Outlook / Gmail)">
@@ -1342,7 +1307,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- SEÇÃO 2: TABELA DE O.S. COM ORÇAMENTO PREVISIONADO (PREVISÃO FUTURA) -->
                 <div id="sectionMedPrevisionadas" style="display: none; margin-top: 24px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; border-bottom: 2px solid #e0e7ff; padding-bottom: 10px;">
                         <div>
@@ -1360,7 +1324,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </div>
                     </div>
 
-                    <!-- Filtros Rápidos de Status e Busca das O.S. Previsionadas -->
                     <div class="no-print" style="margin-bottom: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                         <input type="text" class="filter-input" id="searchPrevOS" placeholder="🔍 Buscar por O.S., Unidade ou Descrição nas Previsionadas..." oninput="filtrarTabelaPrevisionadas()" style="flex: 1; min-width: 250px;">
                         <div class="filter-group" style="margin: 0;">
@@ -1390,7 +1353,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </table>
                     </div>
 
-                    <!-- Faixa de Resumo da Previsão Orçamentária -->
                     <div class="summary-ribbon" style="background: #eef2ff; border-color: #c7d2fe;">
                         <div class="left" id="medPrevRibbonText" style="color: #3730a3;">
                             🛡️ <strong>Total Previsionado:</strong> Entidade: <u>SENAI</u> | O.S. Orçadas: <strong>0 itens</strong> | Margem Real Livre: <strong>R$ 0,00</strong>
@@ -1400,7 +1362,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </div>
                     </div>
 
-                    <!-- Botões de Cópia da Previsão -->
                     <div class="no-print" style="margin-top: 14px; padding: 12px 16px; background: #f8fafc; border: 1px dashed #4338ca; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                         <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                             <button class="btn-action-copy" style="background: #4338ca;" onclick="copiarMedPrevEmail()" title="Copia a relação de O.S. previsionadas formatada para e-mail">
@@ -1420,9 +1381,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- ======================================================= -->
-        <!-- ABA 4: LISTA COMPLETA DE CHAMADOS                       -->
-        <!-- ======================================================= -->
         <div class="tab-view" id="view-chamados" style="display: none;">
             <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
                 <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
@@ -1487,7 +1445,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Contêiner dedicado para impressão isolada (evita página em branco) -->
     <div id="printSection"></div>
 
     <script>
@@ -1511,6 +1468,341 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             payFilters: { mes: '', statusPagamento: '', casa: '' },
             medFilters: { casa: 'SESI', periodo: 'ANUAL', subTab: 'liberadas', filtroPrevStatus: '', searchPrev: '' }
         };
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-view').forEach(v => v.style.display = 'none');
+            document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
+            
+            const targetView = document.getElementById('view-' + tab);
+            const targetNav = document.getElementById('nav-' + tab);
+            if (targetView) targetView.style.display = 'block';
+            if (targetNav) targetNav.classList.add('active');
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function getFiltered() {
+            return state.tickets.filter(t => {
+                if (state.filters.status.length && !state.filters.status.includes(t.status)) return false;
+                if (state.filters.unidade.length && !state.filters.unidade.includes(t.unidade)) return false;
+                if (state.filters.os && !t.os.toString().includes(state.filters.os)) return false;
+                if (state.filters.listStatus && t.status !== state.filters.listStatus) return false;
+                if (state.filters.listUnit && t.unidade !== state.filters.listUnit) return false;
+                return true;
+            });
+        }
+
+        function renderKPIs() {
+            const kpisEl = document.getElementById('kpis');
+            if (!kpisEl) return;
+            const tot = DATA.totais || {};
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const totalChamados = tot.total_chamados || state.tickets.length || 1;
+            
+            kpisEl.innerHTML = `
+                <div class="kpi-card" style="border-left: 4px solid var(--primary);">
+                    <div class="kpi-label">Total de Chamados</div>
+                    <div class="kpi-value">${tot.total_chamados || state.tickets.length}</div>
+                    <div class="kpi-percent">100% da base ativa</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--success);">
+                    <div class="kpi-label">Concluídos</div>
+                    <div class="kpi-value" style="color: var(--success);">${tot.concluido || 0}</div>
+                    <div class="kpi-percent">${((tot.concluido / totalChamados) * 100).toFixed(1)}% finalizados</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--primary);">
+                    <div class="kpi-label">Em Execução</div>
+                    <div class="kpi-value" style="color: var(--primary);">${tot.em_execucao || 0}</div>
+                    <div class="kpi-percent">${((tot.em_execucao / totalChamados) * 100).toFixed(1)}% em andamento</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--danger);">
+                    <div class="kpi-label">Paralisados</div>
+                    <div class="kpi-value" style="color: var(--danger);">${tot.paralisado || 0}</div>
+                    <div class="kpi-percent">${((tot.paralisado / totalChamados) * 100).toFixed(1)}% bloqueados</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--warning);">
+                    <div class="kpi-label">Abertos > 30 Dias</div>
+                    <div class="kpi-value" style="color: #d97706;">${tot.abertos_30dias || 0}</div>
+                    <div class="kpi-percent">${((tot.abertos_30dias / totalChamados) * 100).toFixed(1)}% requerem atenção</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #10b981;">
+                    <div class="kpi-label">Investimento Total</div>
+                    <div class="kpi-value" style="font-size: 22px; color: #10b981;">R$ ${fmt(tot.valor_total || 0)}</div>
+                    <div class="kpi-percent">SESI + SENAI acumulado</div>
+                </div>
+            `;
+        }
+
+        function renderContracts() {
+            const el = document.getElementById('contracts');
+            if (!el) return;
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const contracts = DATA.contracts || {};
+            const sesi = contracts.sesi || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
+            const senai = contracts.senai || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
+
+            const sesiPct = Math.min(100, (sesi.utilizado / sesi.contrato) * 100).toFixed(1);
+            const senaiPct = Math.min(100, (senai.utilizado / senai.contrato) * 100).toFixed(1);
+
+            el.innerHTML = `
+                <div style="margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-weight: 700; color: #0d6efd;">🔵 CONTRATO SESI</span>
+                        <span style="font-size: 13px; font-weight: 700; color: #0d6efd;">R$ ${fmt(sesi.utilizado)} / R$ ${fmt(sesi.contrato)}</span>
+                    </div>
+                    <div class="progress-bar" style="height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden; margin-bottom: 6px;">
+                        <div style="width: ${sesiPct}%; height: 100%; background: #0d6efd; border-radius: 5px;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
+                        <span>Utilizado: ${sesiPct}%</span>
+                        <span>Saldo Disponível: <strong style="color: #10b981;">R$ ${fmt(sesi.saldo)}</strong></span>
+                    </div>
+                </div>
+
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-weight: 700; color: #e65100;">🟠 CONTRATO SENAI</span>
+                        <span style="font-size: 13px; font-weight: 700; color: #e65100;">R$ ${fmt(senai.utilizado)} / R$ ${fmt(senai.contrato)}</span>
+                    </div>
+                    <div class="progress-bar" style="height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden; margin-bottom: 6px;">
+                        <div style="width: ${senaiPct}%; height: 100%; background: #e65100; border-radius: 5px;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
+                        <span>Utilizado: ${senaiPct}%</span>
+                        <span>Saldo Disponível: <strong style="color: #10b981;">R$ ${fmt(senai.saldo)}</strong></span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTempoAberto() {
+            const el = document.getElementById('tempoAberto');
+            if (!el) return;
+            const chamadosAbertos = state.tickets.filter(t => t.status !== 'CONCLUIDO' && t.dias_abertos !== null);
+            const totalAbertos = chamadosAbertos.length || 1;
+            const mediaDias = chamadosAbertos.length > 0 
+                ? Math.round(chamadosAbertos.reduce((acc, t) => acc + t.dias_abertos, 0) / chamadosAbertos.length) 
+                : 0;
+
+            const faixa0_30 = chamadosAbertos.filter(t => t.dias_abertos <= 30).length;
+            const faixa31_60 = chamadosAbertos.filter(t => t.dias_abertos > 30 && t.dias_abertos <= 60).length;
+            const faixa60_mais = chamadosAbertos.filter(t => t.dias_abertos > 60).length;
+
+            el.innerHTML = `
+                <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px;">
+                    <div style="font-size: 38px; font-weight: 800; color: #0f172a;">${mediaDias} <span style="font-size: 18px; font-weight: 600; color: #64748b;">dias</span></div>
+                    <div style="font-size: 13px; color: #64748b;">tempo médio de resolução dos chamados em aberto</div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px; text-align: center;">
+                        <div style="font-size: 11px; font-weight: 700; color: #166534; text-transform: uppercase;">Até 30 dias</div>
+                        <div style="font-size: 20px; font-weight: 800; color: #15803d;">${faixa0_30}</div>
+                        <div style="font-size: 11px; color: #166534;">${((faixa0_30 / totalAbertos) * 100).toFixed(0)}%</div>
+                    </div>
+                    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px; text-align: center;">
+                        <div style="font-size: 11px; font-weight: 700; color: #92400e; text-transform: uppercase;">31 a 60 dias</div>
+                        <div style="font-size: 20px; font-weight: 800; color: #d97706;">${faixa31_60}</div>
+                        <div style="font-size: 11px; color: #92400e;">${((faixa31_60 / totalAbertos) * 100).toFixed(0)}%</div>
+                    </div>
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 10px; text-align: center;">
+                        <div style="font-size: 11px; font-weight: 700; color: #991b1b; text-transform: uppercase;">> 60 dias</div>
+                        <div style="font-size: 20px; font-weight: 800; color: #dc2626;">${faixa60_mais}</div>
+                        <div style="font-size: 11px; color: #991b1b;">${((faixa60_mais / totalAbertos) * 100).toFixed(0)}%</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderFilters() {
+            const el = document.getElementById('filters');
+            if (!el) return;
+            const statuses = [...new Set(state.tickets.map(t => t.status))].sort();
+            let html = `
+                <div>
+                    <span class="filter-label">Filtrar por Status:</span>
+                    <div class="filter-group">
+                        <span class="filter-chip ${state.filters.status.length === 0 ? 'active' : ''}" onclick="state.filters.status = []; renderFilters(); render();">Todos</span>
+            `;
+            statuses.forEach(s => {
+                const active = state.filters.status.includes(s) ? 'active' : '';
+                html += `<span class="filter-chip ${active}" onclick="toggleFilter('status', '${s}')">${s}</span>`;
+            });
+            html += `</div></div>`;
+            el.innerHTML = html;
+        }
+
+        function renderPaymentFilters() {
+            const casaEl = document.getElementById('payCasaFilters');
+            if (casaEl) {
+                casaEl.innerHTML = `
+                    <span class="filter-chip filter-chip-pay ${state.payFilters.casa === '' ? 'active' : ''}" onclick="setPayCasa('')">Todas as Entidades (SESI + SENAI)</span>
+                    <span class="filter-chip filter-chip-pay ${state.payFilters.casa === 'SESI' ? 'active' : ''}" onclick="setPayCasa('SESI')">🔵 SESI (CNPJ SESI)</span>
+                    <span class="filter-chip filter-chip-pay ${state.payFilters.casa === 'SENAI' ? 'active' : ''}" onclick="setPayCasa('SENAI')">🟠 SENAI (CNPJ SENAI)</span>
+                `;
+            }
+
+            const monthEl = document.getElementById('payMonthFilters');
+            if (monthEl) {
+                let mHtml = `<span class="filter-chip filter-chip-pay ${state.payFilters.mes === '' ? 'active' : ''}" onclick="setPayMonth('')">Todos os Meses</span>`;
+                (DATA.meses_existentes || []).forEach(m => {
+                    const active = state.payFilters.mes === m ? 'active' : '';
+                    mHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayMonth('${m}')">📅 ${m}</span>`;
+                });
+                monthEl.innerHTML = mHtml;
+            }
+
+            const statusEl = document.getElementById('payStatusFilters');
+            if (statusEl) {
+                const statuses = ['LIBERADO P/ NFE', 'EM MEDIÇÃO', 'BLOQUEADO', 'PENDENTE ORÇAMENTO'];
+                let sHtml = `<span class="filter-chip filter-chip-pay ${state.payFilters.statusPagamento === '' ? 'active' : ''}" onclick="setPayStatusPag('')">Todos os Status</span>`;
+                statuses.forEach(s => {
+                    const active = state.payFilters.statusPagamento === s ? 'active' : '';
+                    sHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayStatusPag('${s}')">${s}</span>`;
+                });
+                statusEl.innerHTML = sHtml;
+            }
+        }
+
+        function setPayCasa(c) { state.payFilters.casa = c; renderPaymentFilters(); renderPaymentPanel(); }
+        function setPayMonth(m) { state.payFilters.mes = m; renderPaymentFilters(); renderPaymentPanel(); }
+        function setPayStatusPag(s) { state.payFilters.statusPagamento = s; renderPaymentFilters(); renderPaymentPanel(); }
+
+        function renderPaymentPanel() {
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            
+            let list = state.tickets;
+            if (state.payFilters.casa) list = list.filter(t => t.casa === state.payFilters.casa);
+            if (state.payFilters.mes) list = list.filter(t => t.mes_emissao === state.payFilters.mes);
+            if (state.payFilters.statusPagamento) list = list.filter(t => t.status_pagamento === state.payFilters.statusPagamento);
+
+            const liberado = list.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
+            const medicao = list.filter(t => t.status_pagamento === 'EM MEDIÇÃO');
+            const bloqueado = list.filter(t => t.status_pagamento === 'BLOQUEADO');
+
+            const valLiberado = liberado.reduce((s, t) => s + (t.valor || 0), 0);
+            const valMedicao = medicao.reduce((s, t) => s + (t.valor || 0), 0);
+            const valBloqueado = bloqueado.reduce((s, t) => s + (t.valor || 0), 0);
+            const valTotal = list.reduce((s, t) => s + (t.valor || 0), 0);
+
+            const elLiberado = document.getElementById('payValLiberado');
+            if (elLiberado) elLiberado.textContent = `R$ ${fmt(valLiberado)}`;
+            const elCountLiberado = document.getElementById('payCountLiberado');
+            if (elCountLiberado) elCountLiberado.textContent = `${liberado.length} O.S. prontas para faturar`;
+
+            const elMedicao = document.getElementById('payValMedicao');
+            if (elMedicao) elMedicao.textContent = `R$ ${fmt(valMedicao)}`;
+            const elCountMedicao = document.getElementById('payCountMedicao');
+            if (elCountMedicao) elCountMedicao.textContent = `${medicao.length} O.S. em andamento`;
+
+            const elBloqueado = document.getElementById('payValBloqueado');
+            if (elBloqueado) elBloqueado.textContent = `R$ ${fmt(valBloqueado)}`;
+            const elCountBloqueado = document.getElementById('payCountBloqueado');
+            if (elCountBloqueado) elCountBloqueado.textContent = `${bloqueado.length} O.S. paralisadas`;
+
+            const elTotal = document.getElementById('payValTotal');
+            if (elTotal) elTotal.textContent = `R$ ${fmt(valTotal)}`;
+            const elCountTotal = document.getElementById('payCountTotal');
+            if (elCountTotal) elCountTotal.textContent = `${list.length} chamados filtrados`;
+
+            const badge = document.getElementById('paySummaryBadge');
+            if (badge) {
+                const casaTxt = state.payFilters.casa || 'SESI + SENAI';
+                const mesTxt = state.payFilters.mes || 'Todos os Meses';
+                badge.textContent = `Faturamento: R$ ${fmt(valLiberado)} [${casaTxt}] (${mesTxt})`;
+            }
+
+            const tbody = document.getElementById('payTableBody');
+            if (tbody) {
+                let rows = list.map(t => {
+                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                    const casaBadgeColor = t.casa === 'SESI' ? '#0d6efd' : '#e65100';
+                    const casaBadgeBg = t.casa === 'SESI' ? '#e7f3ff' : '#fff3e0';
+                    
+                    let libClass = '#64748b';
+                    let libBg = '#f1f5f9';
+                    if (t.status_pagamento === 'LIBERADO P/ NFE') { libClass = '#15803d'; libBg = '#dcfce7'; }
+                    else if (t.status_pagamento === 'EM MEDIÇÃO') { libClass = '#0284c7'; libBg = '#e0f2fe'; }
+                    else if (t.status_pagamento === 'BLOQUEADO') { libClass = '#b91c1c'; libBg = '#fee2e2'; }
+
+                    return `
+                        <tr>
+                            <td style="font-weight: 700; color: #0d6efd;">#${t.os}</td>
+                            <td>${t.nr}</td>
+                            <td><span style="font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: ${casaBadgeBg}; color: ${casaBadgeColor};">${t.casa}</span></td>
+                            <td><strong>${t.unidade}</strong></td>
+                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                            <td><span style="font-weight: 600; color: #475569;">${t.mes_emissao}</span></td>
+                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
+                            <td><span style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: ${libBg}; color: ${libClass};">${t.status_pagamento}</span></td>
+                            <td style="text-align: right; font-weight: 700; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                if (list.length === 0) {
+                    rows = '<tr><td colspan="9" style="text-align:center; padding: 24px; color: #999;">Nenhum chamado encontrado para os filtros de pagamento selecionados.</td></tr>';
+                }
+                tbody.innerHTML = rows;
+            }
+
+            const tfoot = document.getElementById('payTableFoot');
+            if (tfoot) {
+                const casaTxt = state.payFilters.casa || 'SESI + SENAI';
+                const mesTxt = state.payFilters.mes || 'TODOS OS MESES';
+                tfoot.innerHTML = `
+                    <tr>
+                        <td colspan="4" style="color: #0f172a; font-size: 13px;">
+                            📌 TOTAL DO FILTRO: <span style="color: #0d6efd; font-weight: 800;">${casaTxt} | ${mesTxt}</span>
+                        </td>
+                        <td colspan="4" style="text-align: right; color: #475569; font-size: 12px;">
+                            Liberado para NFE: <strong style="color: #10b981;">R$ ${fmt(valLiberado)} (${liberado.length} O.S.)</strong> &nbsp;|&nbsp; Total da Seleção (${list.length} O.S.):
+                        </td>
+                        <td style="text-align: right; font-size: 15px; color: #0f172a; background: #e2e8f0; font-weight: 800;">
+                            R$ ${fmt(valTotal)}
+                        </td>
+                    </tr>
+                `;
+            }
+
+            const sumFootTxt = document.getElementById('paySummaryFooterText');
+            if (sumFootTxt) sumFootTxt.innerHTML = `Fechamento de Faturamento: <strong>${state.payFilters.casa || 'SESI + SENAI'}</strong> (${state.payFilters.mes || 'Todos os Meses'}) — <strong>${liberado.length} O.S.</strong> prontas para emitir NFE`;
+            const sumFootVal = document.getElementById('paySummaryFooterVal');
+            if (sumFootVal) sumFootVal.textContent = `Total Liberado: R$ ${fmt(valLiberado)}`;
+        }
+
+        function renderMedFilters() {
+            const casaEl = document.getElementById('medCasaFilters');
+            if (casaEl) {
+                casaEl.innerHTML = `
+                    <span class="filter-chip-med ${state.medFilters.casa === 'SESI' ? 'active-sesi' : ''}" onclick="setMedCasa('SESI')">🔵 SESI (CNPJ SESI)</span>
+                    <span class="filter-chip-med ${state.medFilters.casa === 'SENAI' ? 'active-senai' : ''}" onclick="setMedCasa('SENAI')">🟠 SENAI (CNPJ SENAI)</span>
+                `;
+            }
+
+            const periodoEl = document.getElementById('medPeriodoFilters');
+            if (periodoEl) {
+                let pHtml = '';
+                (DATA.meses_existentes || []).forEach(m => {
+                    const activeClass = state.medFilters.periodo === m ? (state.medFilters.casa === 'SESI' ? 'active-sesi' : 'active-senai') : '';
+                    pHtml += `<span class="filter-chip-med ${activeClass}" onclick="setMedPeriodo('${m}')">📅 ${m}</span>`;
+                });
+                const activeAnual = state.medFilters.periodo === 'ANUAL' ? 'active-anual' : '';
+                pHtml += `<span class="filter-chip-med ${activeAnual}" onclick="setMedPeriodo('ANUAL')">📊 ACUMULADO ANUAL (Todas as Medições)</span>`;
+                periodoEl.innerHTML = pHtml;
+            }
+        }
+
+        function setMedCasa(c) {
+            state.medFilters.casa = c;
+            renderMedFilters();
+            renderMedicoesPanel();
+        }
+
+        function setMedPeriodo(p) {
+            state.medFilters.periodo = p;
+            renderMedFilters();
+            renderMedicoesPanel();
+        }
 
         function switchMedSubTab(tabName) {
             state.medFilters.subTab = tabName;
@@ -1578,15 +1870,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
             const casaAtual = state.medFilters.casa;
 
-            // 1. Filtrar estritamente chamados LIBERADOS P/ NFE da Casa
             const liberadosBase = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
             const casaList = liberadosBase.filter(t => t.casa === casaAtual);
 
-            // Total anual efetivamente medido/faturado da casa selecionada
             const totalAnualCasa = casaList.reduce((acc, t) => acc + (t.valor || 0), 0);
             const countAnualCasa = casaList.length;
 
-            // Filtrar pelo período selecionado (mês ou anual)
             let medList = casaList;
             if (state.medFilters.periodo !== 'ANUAL') {
                 medList = casaList.filter(t => t.mes_emissao === state.medFilters.periodo);
@@ -1595,18 +1884,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const totalMedicao = medList.reduce((acc, t) => acc + (t.valor || 0), 0);
             const countMedicao = medList.length;
 
-            // 2. Cálculos da Previsão de Investimentos Futuros
             const ticketsCasa = state.tickets.filter(t => t.casa === casaAtual);
             const chamadosFuturos = ticketsCasa.filter(t => t.status_pagamento !== 'LIBERADO P/ NFE' && t.status !== 'CONCLUIDO' && (t.valor || 0) > 0);
             const valorPrevisaoFutura = chamadosFuturos.reduce((acc, t) => acc + (t.valor || 0), 0);
             const countPrevisaoFutura = chamadosFuturos.length;
-            window.lastCountPrevisao = countPrevisaoFutura;
 
-            // Chamados abertos aguardando orçamento
             const countSemValor = ticketsCasa.filter(t => t.status !== 'CONCLUIDO' && ((t.valor || 0) === 0)).length;
             const totalItensFuturos = countPrevisaoFutura + countSemValor;
 
-            // 3. Teto, Total Comprometido e Saldo Estimado
             const tetoContrato = 1440000.00;
             const saldoContratoReal = Math.max(0, tetoContrato - totalAnualCasa);
             const pctSaldoReal = ((saldoContratoReal / tetoContrato) * 100).toFixed(1);
@@ -1618,104 +1903,114 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const pctPrevisto = Math.min(100 - pctMedido, Math.max(0, (valorPrevisaoFutura / tetoContrato) * 100));
             const pctSaldoEstimado = ((saldoEstimado / tetoContrato) * 100).toFixed(1);
 
-            // 4. Atualizar os 4 KPIs Superiores Tradicionais
-            document.getElementById('medKpiValor').textContent = `R$ ${fmt(totalMedicao)}`;
+            const medKpiValEl = document.getElementById('medKpiValor');
+            if (medKpiValEl) medKpiValEl.textContent = `R$ ${fmt(totalMedicao)}`;
             const periodoLabelTxt = state.medFilters.periodo === 'ANUAL' ? 'no acumulado anual' : 'nesta medição mensal';
-            document.getElementById('medKpiSub').textContent = `${countMedicao} O.S. liberadas ${periodoLabelTxt}`;
+            const medKpiSubEl = document.getElementById('medKpiSub');
+            if (medKpiSubEl) medKpiSubEl.textContent = `${countMedicao} O.S. liberadas ${periodoLabelTxt}`;
 
-            document.getElementById('medKpiAnual').textContent = `R$ ${fmt(totalAnualCasa)}`;
-            document.getElementById('medKpiAnualSub').textContent = `${countAnualCasa} O.S. faturadas no exercício (${casaAtual})`;
+            const medKpiAnualEl = document.getElementById('medKpiAnual');
+            if (medKpiAnualEl) medKpiAnualEl.textContent = `R$ ${fmt(totalAnualCasa)}`;
+            const medKpiAnualSubEl = document.getElementById('medKpiAnualSub');
+            if (medKpiAnualSubEl) medKpiAnualSubEl.textContent = `${countAnualCasa} O.S. faturadas no exercício (${casaAtual})`;
 
-            document.getElementById('medKpiTeto').textContent = `R$ ${fmt(tetoContrato)}`;
-            document.getElementById('medKpiSaldo').textContent = `R$ ${fmt(saldoContratoReal)}`;
-            document.getElementById('medKpiSaldoPct').textContent = `${pctSaldoReal}% disponível no teto homologado`;
+            const medKpiTetoEl = document.getElementById('medKpiTeto');
+            if (medKpiTetoEl) medKpiTetoEl.textContent = `R$ ${fmt(tetoContrato)}`;
+            const medKpiSaldoEl = document.getElementById('medKpiSaldo');
+            if (medKpiSaldoEl) medKpiSaldoEl.textContent = `R$ ${fmt(saldoContratoReal)}`;
+            const medKpiSaldoPctEl = document.getElementById('medKpiSaldoPct');
+            if (medKpiSaldoPctEl) medKpiSaldoPctEl.textContent = `${pctSaldoReal}% disponível no teto homologado`;
 
-            // 5. Atualizar o Bloco de Gestão de Risco e Previsão Futura
             const labelCasaEl = document.getElementById('medPrevCasaLabel');
             if (labelCasaEl) labelCasaEl.textContent = casaAtual;
 
-            document.getElementById('medKpiPrevisao').textContent = `R$ ${fmt(valorPrevisaoFutura)}`;
+            const medKpiPrevEl = document.getElementById('medKpiPrevisao');
+            if (medKpiPrevEl) medKpiPrevEl.textContent = `R$ ${fmt(valorPrevisaoFutura)}`;
             const subPrevisaoTxt = countSemValor > 0 
                 ? `${countPrevisaoFutura} O.S. orçadas (+${countSemValor} aguard. orçamento)`
                 : `${countPrevisaoFutura} O.S. orçadas em andamento`;
-            document.getElementById('medKpiPrevisaoSub').textContent = subPrevisaoTxt;
+            const medKpiPrevSubEl = document.getElementById('medKpiPrevisaoSub');
+            if (medKpiPrevSubEl) medKpiPrevSubEl.textContent = subPrevisaoTxt;
 
-            document.getElementById('medKpiComprometido').textContent = `R$ ${fmt(totalComprometido)}`;
-            document.getElementById('medKpiComprometidoSub').textContent = `${pctComprometido}% do teto consumido (Medido + Previsto)`;
+            const medKpiCompEl = document.getElementById('medKpiComprometido');
+            if (medKpiCompEl) medKpiCompEl.textContent = `R$ ${fmt(totalComprometido)}`;
+            const medKpiCompSubEl = document.getElementById('medKpiComprometidoSub');
+            if (medKpiCompSubEl) medKpiCompSubEl.textContent = `${pctComprometido}% do teto consumido (Medido + Previsto)`;
 
             const cardSaldoEstimado = document.getElementById('medCardSaldoEstimado');
             const kpiSaldoEstimadoVal = document.getElementById('medKpiSaldoEstimado');
             const kpiSaldoEstimadoSub = document.getElementById('medKpiSaldoEstimadoSub');
             const badgeRisco = document.getElementById('medRiscoBadge');
 
-            kpiSaldoEstimadoVal.textContent = `R$ ${fmt(saldoEstimado)}`;
+            if (kpiSaldoEstimadoVal) kpiSaldoEstimadoVal.textContent = `R$ ${fmt(saldoEstimado)}`;
 
-            // Termômetro de Alerta Orçamentário
-            if (saldoEstimado < 0) {
-                kpiSaldoEstimadoVal.style.color = '#dc2626';
-                kpiSaldoEstimadoSub.innerHTML = `⚠️ <strong style="color: #dc2626;">ESTOURO PREVISTO:</strong> Excede o teto em R$ ${fmt(Math.abs(saldoEstimado))}`;
-                if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#dc2626';
-                if (badgeRisco) {
-                    badgeRisco.style.background = '#fee2e2';
-                    badgeRisco.style.color = '#b91c1c';
-                    badgeRisco.style.borderColor = '#fecaca';
-                    badgeRisco.textContent = '⛔ ESTOURO PROJETADO (CONTRATO ESGOTADO)';
-                }
-            } else if (saldoEstimado < 100000) {
-                kpiSaldoEstimadoVal.style.color = '#ea580c';
-                kpiSaldoEstimadoSub.innerHTML = `⚠️ <strong style="color: #ea580c;">MARGEM CRÍTICA:</strong> Apenas ${pctSaldoEstimado}% livre no teto`;
-                if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#ea580c';
-                if (badgeRisco) {
-                    badgeRisco.style.background = '#ffedd5';
-                    badgeRisco.style.color = '#c2410c';
-                    badgeRisco.style.borderColor = '#fed7aa';
-                    badgeRisco.textContent = '🔴 ALERTA CRÍTICO (LIMITE QUASE ESGOTADO)';
-                }
-            } else if (saldoEstimado < 300000) {
-                kpiSaldoEstimadoVal.style.color = '#d97706';
-                kpiSaldoEstimadoSub.innerHTML = `Margem de atenção: ${pctSaldoEstimado}% livre (${fmt(saldoEstimado)})`;
-                if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#f59e0b';
-                if (badgeRisco) {
-                    badgeRisco.style.background = '#fef3c7';
-                    badgeRisco.style.color = '#b45309';
-                    badgeRisco.style.borderColor = '#fde68a';
-                    badgeRisco.textContent = '🟡 ATENÇÃO AO SALDO ESTIMADO';
-                }
-            } else {
-                kpiSaldoEstimadoVal.style.color = '#047857';
-                kpiSaldoEstimadoSub.innerHTML = `Margem segura: ${pctSaldoEstimado}% livre (${fmt(saldoEstimado)})`;
-                if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#10b981';
-                if (badgeRisco) {
-                    badgeRisco.style.background = '#dcfce7';
-                    badgeRisco.style.color = '#15803d';
-                    badgeRisco.style.borderColor = '#bbf7d0';
-                    badgeRisco.textContent = '🟢 SALDO ESTIMADO SEGURO';
+            if (kpiSaldoEstimadoVal && kpiSaldoEstimadoSub) {
+                if (saldoEstimado < 0) {
+                    kpiSaldoEstimadoVal.style.color = '#dc2626';
+                    kpiSaldoEstimadoSub.innerHTML = `⚠️ <strong style="color: #dc2626;">ESTOURO PREVISTO:</strong> Excede o teto em R$ ${fmt(Math.abs(saldoEstimado))}`;
+                    if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#dc2626';
+                    if (badgeRisco) {
+                        badgeRisco.style.background = '#fee2e2';
+                        badgeRisco.style.color = '#b91c1c';
+                        badgeRisco.style.borderColor = '#fecaca';
+                        badgeRisco.textContent = '⛔ ESTOURO PROJETADO (CONTRATO ESGOTADO)';
+                    }
+                } else if (saldoEstimado < 100000) {
+                    kpiSaldoEstimadoVal.style.color = '#ea580c';
+                    kpiSaldoEstimadoSub.innerHTML = `⚠️ <strong style="color: #ea580c;">MARGEM CRÍTICA:</strong> Apenas ${pctSaldoEstimado}% livre no teto`;
+                    if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#ea580c';
+                    if (badgeRisco) {
+                        badgeRisco.style.background = '#ffedd5';
+                        badgeRisco.style.color = '#c2410c';
+                        badgeRisco.style.borderColor = '#fed7aa';
+                        badgeRisco.textContent = '🔴 ALERTA CRÍTICO (LIMITE QUASE ESGOTADO)';
+                    }
+                } else if (saldoEstimado < 300000) {
+                    kpiSaldoEstimadoVal.style.color = '#d97706';
+                    kpiSaldoEstimadoSub.innerHTML = `Margem de atenção: ${pctSaldoEstimado}% livre (${fmt(saldoEstimado)})`;
+                    if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#f59e0b';
+                    if (badgeRisco) {
+                        badgeRisco.style.background = '#fef3c7';
+                        badgeRisco.style.color = '#b45309';
+                        badgeRisco.style.borderColor = '#fde68a';
+                        badgeRisco.textContent = '🟡 ATENÇÃO AO SALDO ESTIMADO';
+                    }
+                } else {
+                    kpiSaldoEstimadoVal.style.color = '#047857';
+                    kpiSaldoEstimadoSub.innerHTML = `Margem segura: ${pctSaldoEstimado}% livre (${fmt(saldoEstimado)})`;
+                    if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#10b981';
+                    if (badgeRisco) {
+                        badgeRisco.style.background = '#dcfce7';
+                        badgeRisco.style.color = '#15803d';
+                        badgeRisco.style.borderColor = '#bbf7d0';
+                        badgeRisco.textContent = '🟢 SALDO ESTIMADO SEGURO';
+                    }
                 }
             }
 
-            // Atualizar Barra Visual de Consumo Contratual
-            document.getElementById('medBarraComprometidoLabel').textContent = `${pctComprometido}% do teto consumido (R$ ${fmt(totalComprometido)} de R$ 1,44M)`;
-            document.getElementById('medBarraMedido').style.width = `${pctMedido}%`;
-            document.getElementById('medBarraPrevisto').style.width = `${pctPrevisto}%`;
+            const barLabel = document.getElementById('medBarraComprometidoLabel');
+            if (barLabel) barLabel.textContent = `${pctComprometido}% do teto consumido (R$ ${fmt(totalComprometido)} de R$ 1,44M)`;
+            const barMed = document.getElementById('medBarraMedido');
+            if (barMed) barMed.style.width = `${pctMedido}%`;
+            const barPrev = document.getElementById('medBarraPrevisto');
+            if (barPrev) barPrev.style.width = `${pctPrevisto}%`;
 
-            document.getElementById('medLegendaMedido').textContent = `R$ ${fmt(totalAnualCasa)} (${pctMedido.toFixed(1)}%)`;
-            document.getElementById('medLegendaPrevisto').textContent = `R$ ${fmt(valorPrevisaoFutura)} (${pctPrevisto.toFixed(1)}%)`;
-            document.getElementById('medLegendaSaldoEstimado').textContent = `R$ ${fmt(saldoEstimado)} (${pctSaldoEstimado}%)`;
+            const legMed = document.getElementById('medLegendaMedido');
+            if (legMed) legMed.textContent = `R$ ${fmt(totalAnualCasa)} (${pctMedido.toFixed(1)}%)`;
+            const legPrev = document.getElementById('medLegendaPrevisto');
+            if (legPrev) legPrev.textContent = `R$ ${fmt(valorPrevisaoFutura)} (${pctPrevisto.toFixed(1)}%)`;
+            const legSaldo = document.getElementById('medLegendaSaldoEstimado');
+            if (legSaldo) legSaldo.textContent = `R$ ${fmt(saldoEstimado)} (${pctSaldoEstimado}%)`;
 
-            // Atualizar Botão de Inspeção
             const btnInspect = document.getElementById('btnToggleInspect');
-            if (btnInspect) {
-                btnInspect.innerHTML = `👁️ Inspecionar O.S. Futuras (${totalItensFuturos})`;
-            }
+            if (btnInspect) btnInspect.innerHTML = `👁️ Inspecionar O.S. Futuras (${totalItensFuturos})`;
 
-            // Atualizar Badges das Sub-abas
             const badgeCountLib = document.getElementById('badgeCountLiberadas');
             if (badgeCountLib) badgeCountLib.textContent = countMedicao;
 
             const badgeCountPrev = document.getElementById('badgeCountPrevisao');
             if (badgeCountPrev) badgeCountPrev.textContent = totalItensFuturos;
 
-            // 6. Renderizar Linhas da Tabela Oficial de Medições (Itens Liberados p/ NFE)
             let rowsHTML = medList
                 .sort((a, b) => b.valor - a.valor)
                 .map(t => {
@@ -1751,9 +2046,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 rowsHTML = '<tr><td colspan="9" style="text-align:center; padding: 24px; color: #999;">Nenhuma Ordem de Serviço com status LIBERADO P/ NFE para a entidade e período selecionados.</td></tr>';
             }
 
-            document.getElementById('medTableBody').innerHTML = rowsHTML;
+            const medTbody = document.getElementById('medTableBody');
+            if (medTbody) medTbody.innerHTML = rowsHTML;
 
-            // Rodapé Fixo da Tabela
             const periodoLabel = state.medFilters.periodo === 'ANUAL' ? 'ACUMULADO ANUAL DO EXERCÍCIO' : state.medFilters.periodo;
             const footHTML = `
                 <tr>
@@ -1768,15 +2063,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </td>
                 </tr>
             `;
-            document.getElementById('medTableFoot').innerHTML = footHTML;
+            const medTfoot = document.getElementById('medTableFoot');
+            if (medTfoot) medTfoot.innerHTML = footHTML;
 
-            // Faixa Inferior de Resumo
-            document.getElementById('medRibbonText').innerHTML = `
-                🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>${casaAtual}</u> | Competência: <u>${periodoLabel}</u> | O.S. Faturadas: <strong>${countMedicao} itens</strong> &nbsp;|&nbsp; 🛡️ Margem Real Livre Restante: <strong style="color: #15803d;">R$ ${fmt(saldoEstimado)}</strong>
-            `;
-            document.getElementById('medRibbonVal').textContent = `Total Medição: R$ ${fmt(totalMedicao)}`;
+            const ribbonText = document.getElementById('medRibbonText');
+            if (ribbonText) {
+                ribbonText.innerHTML = `
+                    🏷️ <strong>Resumo da Medição:</strong> Entidade: <u>${casaAtual}</u> | Competência: <u>${periodoLabel}</u> | O.S. Faturadas: <strong>${countMedicao} itens</strong> &nbsp;|&nbsp; 🛡️ Margem Real Livre Restante: <strong style="color: #15803d;">R$ ${fmt(saldoEstimado)}</strong>
+                `;
+            }
+            const ribbonVal = document.getElementById('medRibbonVal');
+            if (ribbonVal) ribbonVal.textContent = `Total Medição: R$ ${fmt(totalMedicao)}`;
 
-            // Renderizar a Tabela de O.S. Previsionadas
             renderTabelaPrevisionadas();
         }
 
@@ -1785,14 +2083,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const casaAtual = state.medFilters.casa;
             let lista = getChamadosPrevisionadosList();
 
-            // Filtro por tipo de previsão
             if (state.medFilters.filtroPrevStatus === 'ORCADAS') {
                 lista = lista.filter(t => (t.valor || 0) > 0);
             } else if (state.medFilters.filtroPrevStatus === 'AGUARDANDO') {
                 lista = lista.filter(t => (t.valor || 0) === 0 || t.status === 'AGUARDANDO ORÇAMENTO');
             }
 
-            // Filtro por texto
             if (state.medFilters.searchPrev) {
                 const s = state.medFilters.searchPrev;
                 lista = lista.filter(t => 
@@ -1875,9 +2171,203 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
 
             const ribbonVal = document.getElementById('medPrevRibbonVal');
-            if (ribbonVal) {
-                ribbonVal.textContent = `Previsão Total: R$ ${fmt(totalPrev)}`;
+            if (ribbonVal) ribbonVal.textContent = `Previsão Total: R$ ${fmt(totalPrev)}`;
+        }
+
+        function showCopyToastMed(msg) {
+            const el = document.getElementById('copyToastMed');
+            if (!el) return;
+            el.textContent = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3500);
+        }
+
+        function showToastMessage(msg) {
+            ['copyToast', 'copyToastMed', 'copyToastMedPrev'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.textContent = msg;
+                    el.classList.add('show');
+                    setTimeout(() => el.classList.remove('show'), 3500);
+                }
+            });
+        }
+
+        function copiarFallback(text, msg) {
+            const t = document.createElement('textarea');
+            t.value = text;
+            t.style.position = 'fixed';
+            t.style.opacity = '0';
+            document.body.appendChild(t);
+            t.select();
+            try {
+                document.execCommand('copy');
+                showToastMessage(msg);
+            } catch (e) {
+                showToastMessage('⚠️ Pressione Ctrl + C para copiar.');
             }
+            document.body.removeChild(t);
+        }
+
+        function executarCopiaClipboard(htmlContent, textContent, successMsg) {
+            if (navigator.clipboard && window.ClipboardItem) {
+                const textBlob = new Blob([textContent], { type: 'text/plain' });
+                const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+                navigator.clipboard.write([
+                    new ClipboardItem({ 'text/plain': textBlob, 'text/html': htmlBlob })
+                ]).then(() => {
+                    showToastMessage(successMsg);
+                }).catch(() => {
+                    copiarFallback(textContent, successMsg);
+                });
+            } else {
+                copiarFallback(textContent, successMsg);
+            }
+        }
+
+        function copiarTabelaEmail() {
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            let list = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE');
+            if (state.payFilters.casa) list = list.filter(t => t.casa === state.payFilters.casa);
+            if (state.payFilters.mes) list = list.filter(t => t.mes_emissao === state.payFilters.mes);
+
+            if (list.length === 0) {
+                showToastMessage('⚠️ Nenhuma O.S. com status LIBERADO P/ NFE para os filtros selecionados.');
+                return;
+            }
+
+            const total = list.reduce((s, t) => s + (t.valor || 0), 0);
+            const casaTxt = state.payFilters.casa || 'SESI + SENAI';
+            const mesTxt = state.payFilters.mes || 'Todos os Meses';
+
+            let html = `
+                <div style="font-family: Arial, sans-serif; color: #333;">
+                    <div style="padding: 12px; background: #e7f3ff; border-left: 4px solid #0d6efd; margin-bottom: 12px;">
+                        <h3 style="margin: 0; color: #0d6efd;">AUTORIZAÇÃO DE FATURAMENTO / EMISSÃO DE NOTA FISCAL</h3>
+                        <p style="margin: 4px 0 0 0; font-size: 13px;">Entidade: <strong>${casaTxt}</strong> | Competência: <strong>${mesTxt}</strong> | Total de O.S.: <strong>${list.length}</strong> | Valor Total: <strong style="color: #0ca30c;">R$ ${fmt(total)}</strong></p>
+                    </div>
+                    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #ddd;">
+                        <thead>
+                            <tr style="background: #0d6efd; color: white;">
+                                <th>O.S</th><th>NR</th><th>CNPJ / Casa</th><th>Unidade</th><th>Descrição</th><th>Competência</th><th>Status</th><th>Valor a Faturar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            let plain = `AUTORIZAÇÃO DE FATURAMENTO — ${casaTxt} (${mesTxt})\nTotal: R$ ${fmt(total)} (${list.length} O.S.)\n\nO.S\tNR\tCasa\tUnidade\tDescrição\tCompetência\tStatus\tValor\n`;
+
+            list.forEach(t => {
+                html += `
+                    <tr>
+                        <td>#${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
+                    </tr>
+                `;
+                plain += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
+            });
+
+            html += `
+                        </tbody>
+                        <tfoot>
+                            <tr style="background: #e9ecef; font-weight: bold;">
+                                <td colspan="7" style="text-align: right;">TOTAL LIBERADO:</td>
+                                <td style="text-align: right; color: #0ca30c;">R$ ${fmt(total)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
+            plain += `\nTOTAL LIBERADO: R$ ${fmt(total)}\n`;
+
+            executarCopiaClipboard(html, plain, '✅ Tabela copiada! Pressione Ctrl + V no seu e-mail.');
+        }
+
+        function copiarMedicaoEmail() {
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const casaAtual = state.medFilters.casa;
+            const liberadosBase = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE' && t.casa === casaAtual);
+            let medList = liberadosBase;
+            if (state.medFilters.periodo !== 'ANUAL') {
+                medList = liberadosBase.filter(t => t.mes_emissao === state.medFilters.periodo);
+            }
+
+            if (medList.length === 0) {
+                showCopyToastMed('⚠️ Nenhuma O.S. liberada para esta medição.');
+                return;
+            }
+
+            const total = medList.reduce((s, t) => s + (t.valor || 0), 0);
+            const periodoTxt = state.medFilters.periodo === 'ANUAL' ? 'ACUMULADO ANUAL' : state.medFilters.periodo;
+
+            let html = `
+                <div style="font-family: Arial, sans-serif; color: #1e293b;">
+                    <div style="padding: 12px; background: #e0f2fe; border-left: 4px solid #0284c7; margin-bottom: 12px;">
+                        <h3 style="margin: 0; color: #0284c7;">BOLETIM OFICIAL DE MEDIÇÃO CONTRATUAL — ${casaAtual}</h3>
+                        <p style="margin: 4px 0 0 0; font-size: 13px;">Competência: <strong>${periodoTxt}</strong> | O.S. Aprovadas: <strong>${medList.length}</strong> | Total da Medição: <strong style="color: #10b981;">R$ ${fmt(total)}</strong></p>
+                    </div>
+                    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #cbd5e1;">
+                        <thead>
+                            <tr style="background: #0284c7; color: white;">
+                                <th>O.S</th><th>NR</th><th>Unidade</th><th>Descrição</th><th>Mês Competência</th><th>Liberação</th><th>Valor (R$)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            let plain = `BOLETIM DE MEDIÇÃO — ${casaAtual} (${periodoTxt})\nTotal: R$ ${fmt(total)} (${medList.length} O.S.)\n\nO.S\tNR\tUnidade\tDescrição\tCompetência\tLiberação\tValor\n`;
+
+            medList.forEach(t => {
+                html += `
+                    <tr>
+                        <td>#${t.os}</td><td>${t.nr}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #10b981;">R$ ${fmt(t.valor)}</td>
+                    </tr>
+                `;
+                plain += `${t.os}\t${t.nr}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
+            });
+
+            html += `
+                        </tbody>
+                        <tfoot>
+                            <tr style="background: #f1f5f9; font-weight: bold;">
+                                <td colspan="6" style="text-align: right;">TOTAL DA MEDIÇÃO:</td>
+                                <td style="text-align: right; color: #10b981;">R$ ${fmt(total)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
+            plain += `\nTOTAL DA MEDIÇÃO: R$ ${fmt(total)}\n`;
+
+            executarCopiaClipboard(html, plain, `✅ Medição (${casaAtual} • ${periodoTxt}) copiada para E-mail!`);
+        }
+
+        function copiarMedicaoExcel() {
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const casaAtual = state.medFilters.casa;
+            const liberadosBase = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE' && t.casa === casaAtual);
+            let medList = liberadosBase;
+            if (state.medFilters.periodo !== 'ANUAL') {
+                medList = liberadosBase.filter(t => t.mes_emissao === state.medFilters.periodo);
+            }
+
+            if (medList.length === 0) {
+                showCopyToastMed('⚠️ Nenhuma O.S. liberada para esta medição.');
+                return;
+            }
+
+            const total = medList.reduce((s, t) => s + (t.valor || 0), 0);
+            let tsv = `O.S\tNR\tEntidade / CNPJ\tUnidade\tDescrição\tMês Competência\tStatus O.S\tLiberação p/ NFE\tValor a Faturar\n`;
+            let html = `<table><thead><tr><th>O.S</th><th>NR</th><th>Entidade / CNPJ</th><th>Unidade</th><th>Descrição</th><th>Mês Competência</th><th>Status O.S</th><th>Liberação p/ NFE</th><th>Valor a Faturar</th></tr></thead><tbody>`;
+
+            medList.forEach(t => {
+                tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.mes_emissao}\t${t.status}\t${t.status_pagamento}\t${fmt(t.valor)}\n`;
+                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>${t.status}</td><td>${t.status_pagamento}</td><td>${fmt(t.valor)}</td></tr>`;
+            });
+
+            tsv += `TOTAL GERAL DA MEDIÇÃO\t\t\t\t\t\t\t\t${fmt(total)}\n`;
+            html += `<tr><td colspan="8">TOTAL GERAL DA MEDIÇÃO</td><td>${fmt(total)}</td></tr></tbody></table>`;
+
+            executarCopiaClipboard(html, tsv, `✅ Medição formatada para o Excel! Pressione Ctrl + V.`);
         }
 
         function copiarMedPrevEmail() {
@@ -1896,7 +2386,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             let html = `
                 <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5;">
                     <div style="padding: 12px 16px; background-color: #eef2ff; border-left: 5px solid #4f46e5; margin-bottom: 14px; border-radius: 4px;">
-                        <h3 style="margin: 0 0 6px 0; color: #3730a3; font-size: 16px;">🛡️ RELATÓRIO DE O.S. COM ORÇAMENTO PREVISIONADO (PREVISÃO FUTURA)</h3>
+                        <h3 style="margin: 0 0 6px 0; color: #3730a3; font-size: 16px;">🛡️️ RELATÓRIO DE O.S. COM ORÇAMENTO PREVISIONADO (PREVISÃO FUTURA)</h3>
                         <p style="margin: 0; font-size: 13px; color: #4338ca;">
                             Acompanhamento de chamados em andamento e orçamentos programados que consumirão o teto contratual de R$ 1.440.000,00.
                         </p>
@@ -2002,10 +2492,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 return;
             }
 
-            // Clona o elemento selecionado para o contêiner de impressão isolado
             const clone = el.cloneNode(true);
 
-            // Preserva e transfere o desenho de gráficos em canvas se houver
             const originalCanvases = el.querySelectorAll('canvas');
             const clonedCanvases = clone.querySelectorAll('canvas');
             originalCanvases.forEach((origCanvas, i) => {
@@ -2017,30 +2505,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             });
 
-            // Remove botões e elementos interativos do clone impresso
             clone.querySelectorAll('.no-print, button, .btn-print, .btn-action-copy, .btn-inspect-toggle, .copy-toast, .med-subtabs-bar').forEach(n => n.remove());
 
-            // Remove limites de altura para que todas as linhas de tabelas sejam impressas sem cortes
             clone.querySelectorAll('.table-wrapper, [style*="max-height"]').forEach(d => {
                 d.style.maxHeight = 'none';
                 d.style.overflow = 'visible';
             });
 
-            // Reseta quebras forçadas de página no clone
             clone.style.pageBreakInside = 'auto';
             clone.style.breakInside = 'auto';
 
-            // Carimbo oficial do cabeçalho de impressão (sem forçar quebra de página)
             const stamp = document.createElement('div');
             stamp.className = 'print-header-stamp';
             stamp.style.display = 'block';
-            stamp.style.marginBottom = '12px';
-            stamp.style.paddingBottom = '8px';
+            stamp.style.marginBottom = '8px';
+            stamp.style.paddingBottom = '6px';
             stamp.style.borderBottom = '2px solid #0f172a';
             stamp.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
-                        <h1 style="font-size: 17px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
+                        <h1 style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
                         <h2 style="font-size: 13px; font-weight: 700; color: #0284c7; margin: 0;">${titulo || 'Relatório Oficial'}</h2>
                     </div>
                     <div style="text-align: right; font-size: 10px; color: #64748b;">
@@ -2078,31 +2562,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const casaAtual = state.medFilters.casa;
             const titulo = `Gestão de Risco & Previsão de O.S. Futuras - ${casaAtual}`;
 
-            // Coleta dados financeiros atualizados
             const liberadosBase = state.tickets.filter(t => t.status_pagamento === 'LIBERADO P/ NFE' && t.casa === casaAtual);
             const totalAnualCasa = liberadosBase.reduce((acc, t) => acc + (t.valor || 0), 0);
             
             const listaPrev = getChamadosPrevisionadosList();
             const totalPrev = listaPrev.reduce((acc, t) => acc + (t.valor || 0), 0);
             const orcadas = listaPrev.filter(t => (t.valor || 0) > 0);
-            const aguard = listaPrev.filter(t => (t.valor || 0) === 0);
 
             const teto = 1440000.00;
             const totalComprometido = totalAnualCasa + totalPrev;
             const saldoEstimado = teto - totalComprometido;
-            const pctComprometido = ((totalComprometido / teto) * 100).toFixed(1);
 
-            // Carimbo de cabeçalho específico (sem salto de página)
             const stamp = document.createElement('div');
             stamp.className = 'print-header-stamp';
             stamp.style.display = 'block';
-            stamp.style.marginBottom = '12px';
-            stamp.style.paddingBottom = '8px';
+            stamp.style.marginBottom = '8px';
+            stamp.style.paddingBottom = '6px';
             stamp.style.borderBottom = '2px solid #0f172a';
             stamp.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
-                        <h1 style="font-size: 17px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
+                        <h1 style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
                         <h2 style="font-size: 13px; font-weight: 700; color: #4338ca; margin: 0;">🛡 Relatório de Gestão de Risco & Previsão de O.S. Futuras (${casaAtual})</h2>
                     </div>
                     <div style="text-align: right; font-size: 10px; color: #64748b;">
@@ -2112,36 +2592,35 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             `;
 
-            // Bloco de Resumo Financeiro Estruturado em Grade (inicia imediatamente na página 1)
             const resumoDiv = document.createElement('div');
-            resumoDiv.style.display = 'grid';
-            resumoDiv.style.gridTemplateColumns = 'repeat(4, 1fr)';
-            resumoDiv.style.gap = '10px';
-            resumoDiv.style.marginBottom = '14px';
+            resumoDiv.style.display = 'flex';
+            resumoDiv.style.gap = '8px';
+            resumoDiv.style.marginBottom = '10px';
+            resumoDiv.style.pageBreakInside = 'avoid';
+            resumoDiv.style.breakInside = 'avoid';
             resumoDiv.innerHTML = `
-                <div style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #f8fafc;">
-                    <div style="font-size: 10px; text-transform: uppercase; font-weight: 700; color: #64748b;">Teto do Contrato</div>
-                    <div style="font-size: 16px; font-weight: 800; color: #0f172a;">R$ ${fmt(teto)}</div>
-                    <div style="font-size: 10px; color: #64748b;">Limite homologado</div>
+                <div style="flex: 1; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 4px; background: #f8fafc;">
+                    <div style="font-size: 9px; text-transform: uppercase; font-weight: 700; color: #64748b;">Teto Contrato</div>
+                    <div style="font-size: 14px; font-weight: 800; color: #0f172a;">R$ ${fmt(teto)}</div>
+                    <div style="font-size: 9px; color: #64748b;">Limite homologado</div>
                 </div>
-                <div style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #f0fdf4; border-left: 3px solid #10b981;">
-                    <div style="font-size: 10px; text-transform: uppercase; font-weight: 700; color: #166534;">Já Faturado / Medido</div>
-                    <div style="font-size: 16px; font-weight: 800; color: #15803d;">R$ ${fmt(totalAnualCasa)}</div>
-                    <div style="font-size: 10px; color: #166534;">${liberadosBase.length} O.S. liberadas</div>
+                <div style="flex: 1; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 4px; background: #f0fdf4; border-left: 3px solid #10b981;">
+                    <div style="font-size: 9px; text-transform: uppercase; font-weight: 700; color: #166534;">Já Faturado / Medido</div>
+                    <div style="font-size: 14px; font-weight: 800; color: #15803d;">R$ ${fmt(totalAnualCasa)}</div>
+                    <div style="font-size: 9px; color: #166534;">${liberadosBase.length} O.S. liberadas</div>
                 </div>
-                <div style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #eef2ff; border-left: 3px solid #6366f1;">
-                    <div style="font-size: 10px; text-transform: uppercase; font-weight: 700; color: #3730a3;">Previsão Futura</div>
-                    <div style="font-size: 16px; font-weight: 800; color: #4338ca;">R$ ${fmt(totalPrev)}</div>
-                    <div style="font-size: 10px; color: #3730a3;">${orcadas.length} O.S. orçadas</div>
+                <div style="flex: 1; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 4px; background: #eef2ff; border-left: 3px solid #6366f1;">
+                    <div style="font-size: 9px; text-transform: uppercase; font-weight: 700; color: #3730a3;">Previsão Futura</div>
+                    <div style="font-size: 14px; font-weight: 800; color: #4338ca;">R$ ${fmt(totalPrev)}</div>
+                    <div style="font-size: 9px; color: #3730a3;">${orcadas.length} O.S. orçadas</div>
                 </div>
-                <div style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #ecfdf5; border-left: 3px solid #059669;">
-                    <div style="font-size: 10px; text-transform: uppercase; font-weight: 700; color: #065f46;">Saldo Estimado Livre</div>
-                    <div style="font-size: 16px; font-weight: 800; color: #047857;">R$ ${fmt(saldoEstimado)}</div>
-                    <div style="font-size: 10px; color: #065f46;">Margem real restante</div>
+                <div style="flex: 1; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 4px; background: #ecfdf5; border-left: 3px solid #059669;">
+                    <div style="font-size: 9px; text-transform: uppercase; font-weight: 700; color: #065f46;">Saldo Estimado Livre</div>
+                    <div style="font-size: 14px; font-weight: 800; color: #047857;">R$ ${fmt(saldoEstimado)}</div>
+                    <div style="font-size: 9px; color: #065f46;">Margem real restante</div>
                 </div>
             `;
 
-            // Tabela Completa de O.S. Previsionadas para Impressão
             const tableDiv = document.createElement('div');
             let rowsHtml = listaPrev
                 .slice()
@@ -2152,14 +2631,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     const cond = (t.valor || 0) > 0 ? 'ORÇADO' : 'AGUARDANDO';
                     return `
                         <tr style="background-color: ${bg};">
-                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: bold; color: #4338ca;">#${t.os}</td>
-                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.nr}</td>
-                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;"><strong>${t.unidade}</strong></td>
-                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.descricao}</td>
-                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.data_envio || '-'}</td>
-                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.status}</td>
-                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px; font-weight: bold;">${cond}</td>
-                            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold; color: #312e81;">${vTxt}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1; font-weight: bold; color: #4338ca;">#${t.os}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.nr}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;"><strong>${t.unidade}</strong></td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.descricao}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.data_envio || '-'}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.status}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px; font-weight: bold;">${cond}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold; color: #312e81;">${vTxt}</td>
                         </tr>
                     `;
                 }).join('');
@@ -2168,23 +2647,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #cbd5e1;">
                     <thead>
                         <tr style="background-color: #4338ca; color: #ffffff; text-align: left;">
-                            <th style="padding: 7px 8px;">O.S</th>
-                            <th style="padding: 7px 8px;">NR</th>
-                            <th style="padding: 7px 8px;">Unidade</th>
-                            <th style="padding: 7px 8px;">Descrição do Serviço</th>
-                            <th style="padding: 7px 8px;">Abertura</th>
-                            <th style="padding: 7px 8px;">Status O.S</th>
-                            <th style="padding: 7px 8px;">Condição</th>
-                            <th style="padding: 7px 8px; text-align: right;">Previsão (R$)</th>
+                            <th style="padding: 6px 7px;">O.S</th>
+                            <th style="padding: 6px 7px;">NR</th>
+                            <th style="padding: 6px 7px;">Unidade</th>
+                            <th style="padding: 6px 7px;">Descrição do Serviço</th>
+                            <th style="padding: 6px 7px;">Abertura</th>
+                            <th style="padding: 6px 7px;">Status O.S</th>
+                            <th style="padding: 6px 7px;">Condição</th>
+                            <th style="padding: 6px 7px; text-align: right;">Previsão (R$)</th>
                         </tr>
                     </thead>
                     <tbody>${rowsHtml}</tbody>
                     <tfoot>
                         <tr style="background-color: #e0e7ff; font-weight: bold;">
-                            <td colspan="7" style="padding: 8px; border: 1px solid #cbd5e1; text-align: right;">
+                            <td colspan="7" style="padding: 7px; border: 1px solid #cbd5e1; text-align: right;">
                                 TOTAL PREVISIONADO (${casaAtual} • ${listaPrev.length} O.S.):
                             </td>
-                            <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: right; color: #312e81; font-size: 12px;">
+                            <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: right; color: #312e81; font-size: 12px;">
                                 R$ ${fmt(totalPrev)}
                             </td>
                         </tr>
@@ -2258,7 +2737,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </span>
                 `;
             });
-            document.getElementById('listStatusFilter').innerHTML = html;
+            const filterEl = document.getElementById('listStatusFilter');
+            if (filterEl) filterEl.innerHTML = html;
         }
 
         function renderListUnitFilter() {
@@ -2313,26 +2793,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const statusValues = statusLabels.map(s => statusCounts[s]);
             const statusColors = statusLabels.map(s => COLOR_MAP[s] || '#999');
 
-            if (window.statusChartInstance) window.statusChartInstance.destroy();
-            window.statusChartInstance = new Chart(document.getElementById('statusChart'), {
-                type: 'doughnut',
-                data: {
-                    labels: statusLabels,
-                    datasets: [{
-                        data: statusValues,
-                        backgroundColor: statusColors,
-                        borderColor: '#fff',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom' }
+            const statusChartCanvas = document.getElementById('statusChart');
+            if (statusChartCanvas) {
+                if (window.statusChartInstance) window.statusChartInstance.destroy();
+                window.statusChartInstance = new Chart(statusChartCanvas, {
+                    type: 'doughnut',
+                    data: {
+                        labels: statusLabels,
+                        datasets: [{
+                            data: statusValues,
+                            backgroundColor: statusColors,
+                            borderColor: '#fff',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom' }
+                        }
                     }
-                }
-            });
+                });
+            }
 
             const unitData = {};
             filtered.forEach(t => {
@@ -2360,21 +2843,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 borderWidth: 1
             }));
 
-            if (window.unitChartInstance) window.unitChartInstance.destroy();
-            window.unitChartInstance = new Chart(document.getElementById('unitChart'), {
-                type: 'bar',
-                data: { labels: unitLabels, datasets: datasets },
-                options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: { beginAtZero: true, stacked: true, ticks: { stepSize: 1 } },
-                        y: { stacked: true }
-                    },
-                    plugins: { legend: { display: false } }
-                }
-            });
+            const unitChartCanvas = document.getElementById('unitChart');
+            if (unitChartCanvas) {
+                if (window.unitChartInstance) window.unitChartInstance.destroy();
+                window.unitChartInstance = new Chart(unitChartCanvas, {
+                    type: 'bar',
+                    data: { labels: unitLabels, datasets: datasets },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { beginAtZero: true, stacked: true, ticks: { stepSize: 1 } },
+                            y: { stacked: true }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            }
 
             renderUnitCards(unitData, allStatuses);
         }
@@ -2485,12 +2971,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             `;
 
-            document.getElementById('unitLegendBottom').innerHTML = layoutHTML;
+            const unitBottomEl = document.getElementById('unitLegendBottom');
+            if (unitBottomEl) unitBottomEl.innerHTML = layoutHTML;
         }
 
         function renderTable() {
             const filtered = getFiltered();
-            document.getElementById('ticketCount').textContent = filtered.length;
+            const countEl = document.getElementById('ticketCount');
+            if (countEl) countEl.textContent = filtered.length;
+            const totalEl = document.getElementById('totalTickets');
+            if (totalEl) totalEl.textContent = state.tickets.length;
 
             let html = filtered
                 .sort((a, b) => {
@@ -2502,7 +2992,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     return a.unidade.localeCompare(b.unidade) || a.os - b.os;
                 })
                 .map(t => {
-                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\\s+/g, '-').replace(/[^\\w-]/g, '');
+                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
                     
                     let diasHTML = '';
                     if (t.dias_abertos !== null) {
@@ -2551,7 +3041,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 html = '<tr><td colspan="9" style="text-align:center; padding: 24px; color: #999;">Nenhum chamado localizado para os filtros selecionados.</td></tr>';
             }
 
-            document.getElementById('tableBody').innerHTML = html;
+            const tbody = document.getElementById('tableBody');
+            if (tbody) tbody.innerHTML = html;
         }
 
         function render() {
@@ -2564,6 +3055,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             renderTable();
         }
 
+        function init() {
+            state.tickets = DATA.chamados || [];
+            renderFilters();
+            renderPaymentFilters();
+            renderMedFilters();
+            renderListStatusFilter();
+            renderListUnitFilter();
+            render();
+            const upTime = document.getElementById('updateTime');
+            if (upTime) upTime.textContent = new Date().toLocaleString('pt-BR');
+        }
+
         init();
     </script>
 </body>
@@ -2573,7 +3076,6 @@ st.subheader("📊 Dashboard Interativo")
 
 html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
 
-# Altura calibrada para a extensão real de cada aba com rolagem ativada
 st.components.v1.html(html_content, height=1400, scrolling=True)
 
 st.subheader("📥 Download dos Arquivos")
