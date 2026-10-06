@@ -62,53 +62,62 @@ df_os['O.S'] = pd.to_numeric(df_os[os_col], errors='coerce').fillna(0).astype(in
 
 def parse_data_br(val):
     """
-    Interpreta datas estritamente no padrão brasileiro DD/MM/AAAA.
-    Corrige automaticamente células em que o Excel com regionalização US
-    inverteu o Dia pelo Mês quando o dia digitado é <= 12.
+    Interpreta datas estritamente no padrão brasileiro DIA/MÊS/ANO (DD/MM/AAAA).
+    Preserva com precisão matemática o dia e o mês originais, garantindo que
+    nenhuma data seja alterada ou invertida indevidamente.
     """
-    if pd.isna(val) or val == '' or str(val).strip().lower() in ['nan', 'nat', '-', 'none']:
+    if pd.isna(val) or val == '' or str(val).strip().lower() in ['nan', 'nat', '-', 'none', 'null', '0']:
         return None
 
-    hoje_ref = datetime.now()
+    # Se já for Timestamp ou datetime do Python / Excel
+    if isinstance(val, (datetime, pd.Timestamp)):
+        try:
+            return pd.Timestamp(year=val.year, month=val.month, day=val.day)
+        except Exception:
+            return None
 
+    # Se for string digitada
     if isinstance(val, str):
         val_clean = val.strip()
+        # Padrão brasileiro obrigatório: DD/MM/AAAA ou DD-MM-AAAA
         match_br = re.match(r'^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})', val_clean)
         if match_br:
-            d, m, y = int(match_br.group(1)), int(match_br.group(2)), int(match_br.group(3))
-            if y < 100: y += 2000
+            d = int(match_br.group(1))
+            m = int(match_br.group(2))
+            y = int(match_br.group(3))
+            if y < 100:
+                y += 2000
             try:
                 return pd.Timestamp(year=y, month=m, day=d)
             except Exception:
                 pass
+
+        # Fallback para string no formato ISO: AAAA-MM-DD
+        match_iso = re.match(r'^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})', val_clean)
+        if match_iso:
+            y = int(match_iso.group(1))
+            m = int(match_iso.group(2))
+            d = int(match_iso.group(3))
+            try:
+                return pd.Timestamp(year=y, month=m, day=d)
+            except Exception:
+                pass
+
         try:
             dt = pd.to_datetime(val_clean, dayfirst=True, errors='coerce')
             if pd.notna(dt):
-                return dt
+                return pd.Timestamp(year=dt.year, month=dt.month, day=dt.day)
         except Exception:
             pass
 
-    if isinstance(val, (datetime, pd.Timestamp)):
-        y = val.year
-        m = val.month
-        d = val.day
-
-        if d > 12:
-            return pd.Timestamp(year=y, month=m, day=d)
-
-        dt_orig = pd.Timestamp(year=y, month=m, day=d)
-        dt_swapped = None
+    # Se for número de série de data do Excel
+    if isinstance(val, (int, float)):
         try:
-            dt_swapped = pd.Timestamp(year=y, month=d, day=m)
+            dt = pd.to_datetime(val, unit='D', origin='1899-12-30', errors='coerce')
+            if pd.notna(dt):
+                return pd.Timestamp(year=dt.year, month=dt.month, day=dt.day)
         except Exception:
-            dt_swapped = None
-
-        if dt_swapped is not None:
-            if dt_orig > hoje_ref and dt_swapped <= hoje_ref:
-                return dt_swapped
-            return dt_swapped
-
-        return dt_orig
+            pass
 
     return None
 
