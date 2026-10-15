@@ -1398,7 +1398,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="card" id="painelChamados">
                 <div class="card-title-bar">
                     <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📋 Lista Completa de Chamados</div>
-                    <button class="btn-print no-print" onclick="imprimirPainel('painelChamados', 'Lista Completa de Chamados')">🖨️ Imprimir Lista</button>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn-print no-print" onclick="copiarChamadosEmail()" title="Copiar chamados filtrados formatados para colar no e-mail">
+                            📋 Copiar p/ E-mail
+                        </button>
+                        <button class="btn-print no-print" onclick="copiarChamadosExcel()" title="Copiar chamados filtrados em colunas para colar no Excel">
+                            📊 Copiar p/ Planilha
+                        </button>
+                        <button class="btn-print no-print" onclick="imprimirPainel('painelChamados', 'Lista Completa de Chamados')">🖨️ Imprimir Lista</button>
+                    </div>
                 </div>
                 
                 <div class="no-print" style="margin-bottom: 16px;">
@@ -1441,6 +1449,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         </thead>
                         <tbody id="tableBody"></tbody>
                     </table>
+                </div>
+
+                <div class="no-print" style="margin-top: 14px; padding: 12px 16px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <button class="btn-action-copy" style="background: #0d6efd;" onclick="copiarChamadosEmail()" title="Copia a lista filtrada de chamados formatada para e-mail (Outlook / Gmail)">
+                            📋 Copiar Lista p/ E-mail
+                        </button>
+                        <button class="btn-action-copy" style="background: #059669;" onclick="copiarChamadosExcel()" title="Copia a lista filtrada de chamados em colunas para colar no Excel ou Sheets">
+                            📊 Copiar Lista p/ Planilha
+                        </button>
+                    </div>
+                    <div id="copyToastChamados" class="copy-toast">✅ Lista de chamados copiada! Pressione Ctrl + V no seu e-mail ou planilha.</div>
                 </div>
             </div>
 
@@ -2192,7 +2212,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function showToastMessage(msg) {
-            ['copyToast', 'copyToastMed', 'copyToastMedPrev'].forEach(id => {
+            ['copyToast', 'copyToastMed', 'copyToastMedPrev', 'copyToastChamados'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
                     el.textContent = msg;
@@ -2489,6 +2509,141 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             html += `<tr><td colspan="8">TOTAL PREVISIONADO</td><td>${fmt(totalPrev)}</td></tr></tbody></table>`;
 
             executarCopiaClipboard(html, tsv, `✅ O.S. Previsionadas (${casaAtual}) formatadas para Excel! Pressione Ctrl + V.`);
+        }
+
+        function copiarChamadosEmail() {
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const filtered = getFiltered();
+            if (filtered.length === 0) {
+                showToastMessage('⚠️ Nenhum chamado encontrado para os filtros selecionados.');
+                return;
+            }
+
+            const sorted = filtered.slice().sort((a, b) => {
+                if (a.status === 'CONCLUIDO' && b.status !== 'CONCLUIDO') return 1;
+                if (a.status !== 'CONCLUIDO' && b.status === 'CONCLUIDO') return -1;
+                if (a.dias_abertos !== null && b.dias_abertos !== null) {
+                    return b.dias_abertos - a.dias_abertos;
+                }
+                return a.unidade.localeCompare(b.unidade) || a.os - b.os;
+            });
+
+            const total = sorted.reduce((s, t) => s + (t.valor || 0), 0);
+            const statusFiltro = state.filters.listStatus || 'Todos os Status';
+            const unidadeFiltro = state.filters.listUnit || 'Todas as Unidades';
+
+            let html = `
+                <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5;">
+                    <div style="padding: 12px 16px; background-color: #f1f5f9; border-left: 5px solid #0d6efd; margin-bottom: 14px; border-radius: 4px;">
+                        <h3 style="margin: 0 0 6px 0; color: #0d6efd; font-size: 16px;">📋 LISTA DE CHAMADOS DE MANUTENÇÃO PREDIAL — SESI / SENAI</h3>
+                        <p style="margin: 0; font-size: 13px; color: #475569;">
+                            Total de Chamados: <strong>${sorted.length}</strong> | Valor Total: <strong style="color: #0ca30c;">R$ ${fmt(total)}</strong> | Status: <strong>${statusFiltro}</strong> | Unidade: <strong>${unidadeFiltro}</strong>
+                        </p>
+                    </div>
+                    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #cbd5e1; font-family: Arial, sans-serif;">
+                        <thead>
+                            <tr style="background-color: #0d6efd; color: #ffffff; text-align: left;">
+                                <th style="padding: 8px;">O.S</th>
+                                <th style="padding: 8px;">NR</th>
+                                <th style="padding: 8px;">Unidade</th>
+                                <th style="padding: 8px;">Descrição</th>
+                                <th style="padding: 8px;">Status</th>
+                                <th style="padding: 8px; text-align: center;">Data Envio</th>
+                                <th style="padding: 8px; text-align: center;">Entrega Orçamento</th>
+                                <th style="padding: 8px; text-align: center;">Dias Abertos</th>
+                                <th style="padding: 8px; text-align: right;">Valor (R$)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            let plain = `LISTA DE CHAMADOS — SESI / SENAI\nTotal: ${sorted.length} chamados | Valor Total: R$ ${fmt(total)}\nFiltros: ${statusFiltro} | ${unidadeFiltro}\n\n`;
+            plain += `O.S\tNR\tUnidade\tDescrição\tStatus\tData Envio\tEntrega Orçamento\tDias Abertos\tValor\n`;
+
+            sorted.forEach((t, i) => {
+                const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+                let orcTxt = '-';
+                if (t.data_orcamento) {
+                    orcTxt = t.data_orcamento + (t.dias_orcamento !== null ? ` (${t.dias_orcamento}d)` : '');
+                } else if (t.status === 'AGUARDANDO ORÇAMENTO' && t.dias_orcamento !== null) {
+                    orcTxt = `Aguardando (${t.dias_orcamento}d)`;
+                }
+
+                const diasTxt = t.dias_abertos !== null ? `${t.dias_abertos}d` : '-';
+
+                html += `
+                    <tr style="background-color: ${bg};">
+                        <td style="padding: 8px; font-weight: bold; color: #0d6efd;">#${t.os}</td>
+                        <td style="padding: 8px;">${t.nr}</td>
+                        <td style="padding: 8px;"><strong>${t.unidade}</strong></td>
+                        <td style="padding: 8px;">${t.descricao}</td>
+                        <td style="padding: 8px;">${t.status}</td>
+                        <td style="padding: 8px; text-align: center;">${t.data_envio || '-'}</td>
+                        <td style="padding: 8px; text-align: center;">${orcTxt}</td>
+                        <td style="padding: 8px; text-align: center; font-weight: bold;">${diasTxt}</td>
+                        <td style="padding: 8px; text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
+                    </tr>
+                `;
+                plain += `${t.os}\t${t.nr}\t${t.unidade}\t${t.descricao}\t${t.status}\t${t.data_envio || '-'}\t${orcTxt}\t${diasTxt}\tR$ ${fmt(t.valor)}\n`;
+            });
+
+            html += `
+                        </tbody>
+                        <tfoot>
+                            <tr style="background-color: #e9ecef; font-weight: bold;">
+                                <td colspan="8" style="padding: 10px; text-align: right;">TOTAL GERAL (${sorted.length} chamados):</td>
+                                <td style="padding: 10px; text-align: right; color: #0ca30c; font-size: 13px;">R$ ${fmt(total)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
+            plain += `\nTOTAL GERAL: R$ ${fmt(total)}\n`;
+
+            executarCopiaClipboard(html, plain, '✅ Lista de chamados copiada para E-mail! Pressione Ctrl + V.');
+        }
+
+        function copiarChamadosExcel() {
+            const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
+            const filtered = getFiltered();
+            if (filtered.length === 0) {
+                showToastMessage('⚠️ Nenhum chamado encontrado para os filtros selecionados.');
+                return;
+            }
+
+            const sorted = filtered.slice().sort((a, b) => {
+                if (a.status === 'CONCLUIDO' && b.status !== 'CONCLUIDO') return 1;
+                if (a.status !== 'CONCLUIDO' && b.status === 'CONCLUIDO') return -1;
+                if (a.dias_abertos !== null && b.dias_abertos !== null) {
+                    return b.dias_abertos - a.dias_abertos;
+                }
+                return a.unidade.localeCompare(b.unidade) || a.os - b.os;
+            });
+
+            const total = sorted.reduce((s, t) => s + (t.valor || 0), 0);
+
+            let tsv = `O.S\tNR\tUnidade\tDescrição\tStatus\tData Envio\tEntrega Orçamento\tDias Abertos\tValor\n`;
+            let html = `<table><thead><tr><th>O.S</th><th>NR</th><th>Unidade</th><th>Descrição</th><th>Status</th><th>Data Envio</th><th>Entrega Orçamento</th><th>Dias Abertos</th><th>Valor</th></tr></thead><tbody>`;
+
+            sorted.forEach(t => {
+                let orcTxt = '-';
+                if (t.data_orcamento) {
+                    orcTxt = t.data_orcamento + (t.dias_orcamento !== null ? ` (${t.dias_orcamento}d)` : '');
+                } else if (t.status === 'AGUARDANDO ORÇAMENTO' && t.dias_orcamento !== null) {
+                    orcTxt = `Aguardando (${t.dias_orcamento}d)`;
+                }
+
+                const diasTxt = t.dias_abertos !== null ? `${t.dias_abertos}d` : '-';
+                const valorTxt = fmt(t.valor);
+
+                tsv += `${t.os}\t${t.nr}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.status}\t${t.data_envio || '-'}\t${orcTxt}\t${diasTxt}\t${valorTxt}\n`;
+                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.status}</td><td>${t.data_envio || '-'}</td><td>${orcTxt}</td><td>${diasTxt}</td><td>${valorTxt}</td></tr>`;
+            });
+
+            tsv += `TOTAL GERAL\t\t\t\t\t\t\t\t${fmt(total)}\n`;
+            html += `<tr><td colspan="8">TOTAL GERAL (${sorted.length} chamados)</td><td>${fmt(total)}</td></tr></tbody></table>`;
+
+            executarCopiaClipboard(html, tsv, '✅ Lista de chamados formatada para o Excel! Pressione Ctrl + V.');
         }
 
         function imprimirPainel(elementId, titulo) {
