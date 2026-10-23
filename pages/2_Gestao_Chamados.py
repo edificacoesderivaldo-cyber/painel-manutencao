@@ -82,19 +82,18 @@ def processar_base(arquivo):
     df["Farol_SLA"] = df.apply(avaliar_sla, axis=1)
     return df
 
-# Carga do arquivo carregado ou do arquivo padrão do repositório
+# Carga do ficheiro carregado ou do ficheiro padrão do repositório
 df_chamados = pd.DataFrame()
 
 if arquivo_carregado is not None:
     df_chamados = processar_base(arquivo_carregado)
 else:
-    # Caso você tenha subido o arquivo export (1).csv no repositório, ele carrega automático
     try:
         df_chamados = processar_base("export (1).csv")
     except Exception:
         df_chamados = pd.DataFrame()
 
-# Mensagem orientativa caso não haja arquivo
+# Mensagem orientativa caso não haja ficheiro carregado
 if df_chamados.empty:
     st.info("👈 Por favor, **arraste o arquivo CSV exportado do SysAid** no campo à esquerda para visualizar o painel.")
     st.stop()
@@ -119,7 +118,7 @@ filtro_disciplina = st.sidebar.selectbox("Especialidade", disciplinas)
 status_opcoes = ["Todos"] + sorted(list(df_chamados["Status"].dropna().unique()))
 filtro_status = st.sidebar.selectbox("Status do Chamado", status_opcoes)
 
-# Aplicando os filtros
+# Aplicação dos filtros
 df_view = df_chamados.copy()
 
 if filtro_atendimento != "Todas":
@@ -148,7 +147,7 @@ c4.metric("SLA Vencido", f"{vencidos}", delta="Atenção", delta_color="inverse"
 st.divider()
 
 # ==============================================================================
-# GRÁFICOS ANALÍTICOS (NATIVOS DO STREAMLIT - SEM DEPENDÊNCIAS EXTRAS)
+# GRÁFICOS ANALÍTICOS (NATIVOS DO STREAMLIT)
 # ==============================================================================
 col_g1, col_g2 = st.columns(2)
 
@@ -182,7 +181,7 @@ colunas = [
 tabela = df_view[colunas].sort_values("Dias_Aberto", ascending=False)
 st.dataframe(tabela, use_container_width=True, height=450)
 
-# Botão para exportar o filtro atual
+# Exportação dos dados filtrados
 csv_baixar = tabela.to_csv(index=False).encode("utf-8")
 st.download_button(
     label="📥 Baixar Dados Filtrados (CSV)",
