@@ -1,3 +1,6 @@
+import html as html_lib
+import os
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -70,26 +73,42 @@ arquivo_carregado = st.sidebar.file_uploader(
     help="Exporte o relatório no SysAid em formato CSV e solte aqui para atualizar."
 )
 
+ARQUIVO_PADRAO = "export (1).csv"
+STATUS_CONCLUIDO = "Solicitação Atendida"
+FORMATO_DATA = "%d-%m-%Y %H:%M:%S"
+COLUNAS_OBRIGATORIAS = [
+    "#", "Título", "Usuário Solicitante", "Subcategoria", "Status",
+    "Hora da solicitação", "Data de conclusão",
+]
+
+
 @st.cache_data
 def processar_base(arquivo):
-    try:
-        df = pd.read_csv(arquivo, encoding="latin1", sep=",")
-    except Exception:
+    """Lê o CSV e faz a classificação que NÃO depende da data atual (pode ser cacheada)."""
+    df = None
+    for encoding in ("utf-8-sig", "latin1"):
         try:
-            df = pd.read_csv(arquivo, encoding="utf-8", sep=",")
+            if hasattr(arquivo, "seek"):
+                arquivo.seek(0)
+            df = pd.read_csv(arquivo, encoding=encoding, sep=",")
+            break
         except Exception:
-            return pd.DataFrame()
+            continue
+    if df is None:
+        raise ValueError("Não foi possível ler o CSV. Verifique se o arquivo é a exportação do SysAid (separador vírgula).")
 
-    # Tratamento de localidade
-    df["Local_Tratado"] = df["Local"].fillna(df["Empresa"]).fillna("Não Informado")
+    faltando = [c for c in COLUNAS_OBRIGATORIAS if c not in df.columns]
+    if faltando:
+        raise ValueError("Colunas obrigatórias não encontradas no CSV: " + ", ".join(faltando))
+
+    # Localidade: usa "Local" e cai para "Empresa" quando vazio
+    local = df["Local"] if "Local" in df.columns else pd.Series(index=df.index, dtype=object)
+    empresa = df["Empresa"] if "Empresa" in df.columns else pd.Series(index=df.index, dtype=object)
+    df["Local_Tratado"] = local.fillna(empresa).fillna("Não Informado")
 
     # Conversão de datas
-    fmt_data = "%d-%m-%Y %H:%M:%S"
-    df["dt_solicitacao"] = pd.to_datetime(df["Hora da solicitação"], format=fmt_data, errors="coerce")
-    df["dt_conclusao_prev"] = pd.to_datetime(df["Data de conclusão"], format=fmt_data, errors="coerce")
-
-    hoje = datetime.now()
-    df["Dias_Aberto"] = (hoje - df["dt_solicitacao"]).dt.days.fillna(0).astype(int)
+    df["dt_solicitacao"] = pd.to_datetime(df["Hora da solicitação"], format=FORMATO_DATA, errors="coerce")
+    df["dt_conclusao_prev"] = pd.to_datetime(df["Data de conclusão"], format=FORMATO_DATA, errors="coerce")
 
     # Classificação operacional da demanda
     def definir_tipo(linha):
@@ -103,17 +122,24 @@ def processar_base(arquivo):
         ]
         if any(t in sub or t in terceiro or t in tit for t in termos_pesados):
             return "OS Contratual (PROHAB)"
-        
+
         if "telhado" in sub and any(t in tit for t in ["reforma", "troca", "vazamento"]):
             return "OS Contratual (PROHAB)"
 
         return "Equipe Interna (Própria)"
 
     df["Tipo_Atendimento"] = df.apply(definir_tipo, axis=1)
+    return df
 
-    # Farol de SLA
+
+def calcular_indicadores(df):
+    """Dias em aberto e farol de SLA dependem da data atual: calculados a cada execução, sem cache."""
+    hoje = datetime.now()
+    df = df.copy()
+    df["Dias_Aberto"] = (hoje - df["dt_solicitacao"]).dt.days.fillna(0).astype(int)
+
     def avaliar_sla(linha):
-        if linha["Status"] == "Solicitação Atendida":
+        if linha.get("Status") == STATUS_CONCLUIDO:
             return "Concluído"
         if pd.isna(linha["dt_conclusao_prev"]):
             return "Sem Prazo"
@@ -121,23 +147,30 @@ def processar_base(arquivo):
             return "Vencido"
         return "No Prazo"
 
-    df["Farol_SLA"] = df.apply(avaliar_sla, axis=1)
+    df["Farol_SLA"] = df.apply(avaliar_sla, axis=1) if not df.empty else pd.Series(dtype=object)
     return df
+
 
 # Carga de dados
 df_chamados = pd.DataFrame()
+erro_carga = None
+try:
+    if arquivo_carregado is not None:
+        df_chamados = processar_base(arquivo_carregado)
+    elif os.path.exists(ARQUIVO_PADRAO):
+        df_chamados = processar_base(ARQUIVO_PADRAO)
+except ValueError as e:
+    erro_carga = str(e)
 
-if arquivo_carregado is not None:
-    df_chamados = processar_base(arquivo_carregado)
-else:
-    try:
-        df_chamados = processar_base("export (1).csv")
-    except Exception:
-        df_chamados = pd.DataFrame()
+if erro_carga:
+    st.error(f"❌ {erro_carga}")
+    st.stop()
 
 if df_chamados.empty:
     st.info("👈 Por favor, **arraste o arquivo CSV exportado do SysAid** no campo à esquerda para visualizar o painel.")
     st.stop()
+
+df_chamados = calcular_indicadores(df_chamados)
 
 # ==============================================================================
 # 3. HELPER PARA BOTÕES DE FILTRO DINÂMICO (PILLS / SEGMENTED CONTROL)
@@ -231,7 +264,10 @@ with g1:
     st.markdown("##### 📍 Volume de Chamados por Unidade")
     dados_unidade = df_view["Local_Tratado"].value_counts().head(8)
     if not dados_unidade.empty:
-        st.bar_chart(dados_unidade, horizontal=True)
+        try:
+            st.bar_chart(dados_unidade, horizontal=True)
+        except TypeError:  # versões antigas do Streamlit não aceitam 'horizontal'
+            st.bar_chart(dados_unidade)
     else:
         st.info("Nenhum dado para o filtro selecionado.")
 
@@ -267,6 +303,7 @@ st.dataframe(tabela, use_container_width=True, height=430)
 # 9. GERADOR DE RELATÓRIO FORMATADO (IMPRESSÃO / PDF)
 # ==============================================================================
 def gerar_relatorio_impressao(df_dados, filtros_info):
+    e = lambda v: "" if pd.isna(v) else html_lib.escape(str(v))
     linhas_tabela = ""
     for _, row in df_dados.iterrows():
         sla_val = str(row.get("Farol_SLA", ""))
@@ -275,15 +312,15 @@ def gerar_relatorio_impressao(df_dados, filtros_info):
 
         linhas_tabela += f"""
         <tr>
-            <td style="text-align: center; font-weight: bold; color: #0d6efd;">{row.get('#', '')}</td>
-            <td>{row.get('Tipo_Atendimento', '')}</td>
-            <td>{row.get('Local_Tratado', '')}</td>
-            <td>{row.get('Subcategoria', '')}</td>
-            <td>{row.get('Título', '')}</td>
-            <td>{row.get('Usuário Solicitante', '')}</td>
-            <td style="text-align: center;">{row.get('Dias_Aberto', '')} d</td>
-            <td style="text-align: center;"><span style="background-color: {fundo_sla}; color: {cor_sla}; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">{sla_val}</span></td>
-            <td style="text-align: center;">{row.get('Status', '')}</td>
+            <td style="text-align: center; font-weight: bold; color: #0d6efd;">{e(row.get('#', ''))}</td>
+            <td>{e(row.get('Tipo_Atendimento', ''))}</td>
+            <td>{e(row.get('Local_Tratado', ''))}</td>
+            <td>{e(row.get('Subcategoria', ''))}</td>
+            <td>{e(row.get('Título', ''))}</td>
+            <td>{e(row.get('Usuário Solicitante', ''))}</td>
+            <td style="text-align: center;">{e(row.get('Dias_Aberto', ''))} d</td>
+            <td style="text-align: center;"><span style="background-color: {fundo_sla}; color: {cor_sla}; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">{e(sla_val)}</span></td>
+            <td style="text-align: center;">{e(row.get('Status', ''))}</td>
         </tr>
         """
 
@@ -420,16 +457,16 @@ def gerar_relatorio_impressao(df_dados, filtros_info):
             <p>SESI • SENAI • FIBRA | Relatório Operacional de Chamados</p>
         </div>
         <div style="text-align: right; font-size: 12px;">
-            <b>Emissão:</b> {filtros_info.get('data_hora', '')}<br>
-            <b>Total Filtrado:</b> {filtros_info.get('total', 0)} chamados
+            <b>Emissão:</b> {e(filtros_info.get('data_hora', ''))}<br>
+            <b>Total Filtrado:</b> {e(filtros_info.get('total', 0))} chamados
         </div>
     </div>
 
     <div class="meta-box">
-        <div class="meta-item"><strong>Frente Operacional:</strong> {filtros_info.get('frente', 'Todas')}</div>
-        <div class="meta-item"><strong>Unidade / Prédio:</strong> {filtros_info.get('unidade', 'Todas')}</div>
-        <div class="meta-item"><strong>Farol SLA:</strong> {filtros_info.get('sla', 'Todos')}</div>
-        <div class="meta-item"><strong>Status:</strong> {filtros_info.get('status', 'Todos')}</div>
+        <div class="meta-item"><strong>Frente Operacional:</strong> {e(filtros_info.get('frente', 'Todas'))}</div>
+        <div class="meta-item"><strong>Unidade / Prédio:</strong> {e(filtros_info.get('unidade', 'Todas'))}</div>
+        <div class="meta-item"><strong>Farol SLA:</strong> {e(filtros_info.get('sla', 'Todos'))}</div>
+        <div class="meta-item"><strong>Status:</strong> {e(filtros_info.get('status', 'Todos'))}</div>
     </div>
 
     <table>
