@@ -4,6 +4,9 @@ import json
 import re
 from datetime import datetime
 
+# Teto contratual por entidade (SESI e SENAI). Fonte única para Python e JS.
+TETO_CONTRATO = 1440000.0
+
 st.set_page_config(
     page_title="Painel de Manutenção Predial",
     page_icon="📊",
@@ -264,9 +267,10 @@ data = {
     'totais': {},
     'meses_existentes': meses_existentes,
     'tem_coluna_orcamento': data_orc_col is not None,
+    'teto_contrato': TETO_CONTRATO,
     'contracts': {
-        'sesi': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0},
-        'senai': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0}
+        'sesi': {'contrato': TETO_CONTRATO, 'utilizado': 0.0, 'saldo': TETO_CONTRATO},
+        'senai': {'contrato': TETO_CONTRATO, 'utilizado': 0.0, 'saldo': TETO_CONTRATO}
     }
 }
 
@@ -370,7 +374,7 @@ data['totais'] = {
     'valor_total': round(valor_total, 2)
 }
 
-HTML_TEMPLATE = """<!DOCTYPE html>
+HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -1550,6 +1554,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         const DATA = __DATA_PLACEHOLDER__;
 
+        // Escapa texto vindo da planilha antes de inserir em HTML.
+        function esc(v) {
+            return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         let state = {
             tickets: [],
             filters: { status: [], unidade: [], os: '', listStatus: '', listUnit: '' },
@@ -1626,8 +1635,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             if (!el) return;
             const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
             const contracts = DATA.contracts || {};
-            const sesi = contracts.sesi || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
-            const senai = contracts.senai || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
+            const sesi = contracts.sesi || { contrato: DATA.teto_contrato, utilizado: 0, saldo: DATA.teto_contrato };
+            const senai = contracts.senai || { contrato: DATA.teto_contrato, utilizado: 0, saldo: DATA.teto_contrato };
 
             const sesiPct = Math.min(100, (sesi.utilizado / sesi.contrato) * 100).toFixed(1);
             const senaiPct = Math.min(100, (senai.utilizado / senai.contrato) * 100).toFixed(1);
@@ -1713,7 +1722,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             `;
             statuses.forEach(s => {
                 const active = state.filters.status.includes(s) ? 'active' : '';
-                html += `<span class="filter-chip ${active}" onclick="toggleFilter('status', '${s}')">${s}</span>`;
+                html += `<span class="filter-chip ${active}" onclick="toggleFilter('status', '${esc(s)}')">${esc(s)}</span>`;
             });
             html += `</div></div>`;
             el.innerHTML = html;
@@ -1734,7 +1743,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 let mHtml = `<span class="filter-chip filter-chip-pay ${state.payFilters.mes === '' ? 'active' : ''}" onclick="setPayMonth('')">Todos os Meses</span>`;
                 (DATA.meses_existentes || []).forEach(m => {
                     const active = state.payFilters.mes === m ? 'active' : '';
-                    mHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayMonth('${m}')">📅 ${m}</span>`;
+                    mHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayMonth('${esc(m)}')">📅 ${esc(m)}</span>`;
                 });
                 monthEl.innerHTML = mHtml;
             }
@@ -1745,7 +1754,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 let sHtml = `<span class="filter-chip filter-chip-pay ${state.payFilters.statusPagamento === '' ? 'active' : ''}" onclick="setPayStatusPag('')">Todos os Status</span>`;
                 statuses.forEach(s => {
                     const active = state.payFilters.statusPagamento === s ? 'active' : '';
-                    sHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayStatusPag('${s}')">${s}</span>`;
+                    sHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayStatusPag('${esc(s)}')">${esc(s)}</span>`;
                 });
                 statusEl.innerHTML = sHtml;
             }
@@ -1816,11 +1825,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <tr>
                             <td style="font-weight: 700; color: #0d6efd;">#${t.os}</td>
                             <td>${t.nr}</td>
-                            <td><span style="font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: ${casaBadgeBg}; color: ${casaBadgeColor};">${t.casa}</span></td>
-                            <td><strong>${t.unidade}</strong></td>
-                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
-                            <td><span style="font-weight: 600; color: #475569;">${t.mes_emissao}</span></td>
-                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
+                            <td><span style="font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: ${casaBadgeBg}; color: ${casaBadgeColor};">${esc(t.casa)}</span></td>
+                            <td><strong>${esc(t.unidade)}</strong></td>
+                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(t.descricao)}">${esc(t.descricao)}</td>
+                            <td><span style="font-weight: 600; color: #475569;">${esc(t.mes_emissao)}</span></td>
+                            <td><span class="status-badge ${statusClass}">${esc(t.status)}</span></td>
                             <td><span style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: ${libBg}; color: ${libClass};">${t.status_pagamento}</span></td>
                             <td style="text-align: right; font-weight: 700; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
                         </tr>
@@ -1872,7 +1881,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 let pHtml = '';
                 (DATA.meses_existentes || []).forEach(m => {
                     const activeClass = state.medFilters.periodo === m ? (state.medFilters.casa === 'SESI' ? 'active-sesi' : 'active-senai') : '';
-                    pHtml += `<span class="filter-chip-med ${activeClass}" onclick="setMedPeriodo('${m}')">📅 ${m}</span>`;
+                    pHtml += `<span class="filter-chip-med ${activeClass}" onclick="setMedPeriodo('${esc(m)}')">📅 ${esc(m)}</span>`;
                 });
                 const activeAnual = state.medFilters.periodo === 'ANUAL' ? 'active-anual' : '';
                 pHtml += `<span class="filter-chip-med ${activeAnual}" onclick="setMedPeriodo('ANUAL')">📊 ACUMULADO ANUAL (Todas as Medições)</span>`;
@@ -1980,7 +1989,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const countSemValor = ticketsCasa.filter(t => t.status !== 'CONCLUIDO' && ((t.valor || 0) === 0)).length;
             const totalItensFuturos = countPrevisaoFutura + countSemValor;
 
-            const tetoContrato = 1440000.00;
+            const tetoContrato = DATA.teto_contrato;
             const saldoContratoReal = Math.max(0, tetoContrato - totalAnualCasa);
             const pctSaldoReal = ((saldoContratoReal / tetoContrato) * 100).toFixed(1);
 
@@ -2114,9 +2123,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                     ${t.casa}
                                 </span>
                             </td>
-                            <td><strong>${t.unidade}</strong></td>
-                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
-                            <td><span style="font-size: 12px; font-weight: 700; color: #475569;">${t.mes_emissao}</span></td>
+                            <td><strong>${esc(t.unidade)}</strong></td>
+                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(t.descricao)}">${esc(t.descricao)}</td>
+                            <td><span style="font-size: 12px; font-weight: 700; color: #475569;">${esc(t.mes_emissao)}</span></td>
                             <td><span class="status-badge status-concluido">CONCLUIDO</span></td>
                             <td>
                                 <span style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;">
@@ -2217,10 +2226,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                     ${t.casa}
                                 </span>
                             </td>
-                            <td><strong>${t.unidade}</strong></td>
-                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
-                            <td style="font-size: 12px; color: #475569;">${t.data_envio || '-'}</td>
-                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
+                            <td><strong>${esc(t.unidade)}</strong></td>
+                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(t.descricao)}">${esc(t.descricao)}</td>
+                            <td style="font-size: 12px; color: #475569;">${esc(t.data_envio || '-')}</td>
+                            <td><span class="status-badge ${statusClass}">${esc(t.status)}</span></td>
                             <td>${condBadge}</td>
                             <td style="text-align: right;">${valorTxt}</td>
                         </tr>
@@ -2348,7 +2357,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             list.forEach(t => {
                 html += `
                     <tr>
-                        <td>#${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
+                        <td>#${t.os}</td><td>${t.nr}</td><td>${esc(t.casa)}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.mes_emissao)}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
                     </tr>
                 `;
                 plain += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
@@ -2407,7 +2416,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             medList.forEach(t => {
                 html += `
                     <tr>
-                        <td>#${t.os}</td><td>${t.nr}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #10b981;">R$ ${fmt(t.valor)}</td>
+                        <td>#${t.os}</td><td>${t.nr}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.mes_emissao)}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #10b981;">R$ ${fmt(t.valor)}</td>
                     </tr>
                 `;
                 plain += `${t.os}\t${t.nr}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
@@ -2449,7 +2458,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             medList.forEach(t => {
                 tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.mes_emissao}\t${t.status}\t${t.status_pagamento}\t${fmt(t.valor)}\n`;
-                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>${t.status}</td><td>${t.status_pagamento}</td><td>${fmt(t.valor)}</td></tr>`;
+                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${esc(t.casa)}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.mes_emissao)}</td><td>${esc(t.status)}</td><td>${t.status_pagamento}</td><td>${fmt(t.valor)}</td></tr>`;
             });
 
             tsv += `TOTAL GERAL DA MEDIÇÃO\t\t\t\t\t\t\t\t${fmt(total)}\n`;
@@ -2513,10 +2522,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <tr style="background-color: ${bg};">
                             <td style="padding: 8px; font-weight: bold; color: #4338ca;">#${t.os}</td>
                             <td style="padding: 8px;">${t.nr}</td>
-                            <td style="padding: 8px;"><strong>${t.unidade}</strong></td>
-                            <td style="padding: 8px;">${t.descricao}</td>
-                            <td style="padding: 8px;">${t.data_envio || '-'}</td>
-                            <td style="padding: 8px;">${t.status}</td>
+                            <td style="padding: 8px;"><strong>${esc(t.unidade)}</strong></td>
+                            <td style="padding: 8px;">${esc(t.descricao)}</td>
+                            <td style="padding: 8px;">${esc(t.data_envio || '-')}</td>
+                            <td style="padding: 8px;">${esc(t.status)}</td>
                             <td style="padding: 8px; text-align: right; font-weight: bold; color: #4338ca;">${vTxt}</td>
                         </tr>
                     `;
@@ -2561,7 +2570,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     const cond = (t.valor || 0) > 0 ? 'ORÇADO' : 'AGUARDANDO';
                     const vTxt = (t.valor || 0) > 0 ? fmt(t.valor) : '0,00';
                     tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.data_envio || '-'}\t${t.status}\t${cond}\t${vTxt}\n`;
-                    html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.data_envio || '-'}</td><td>${t.status}</td><td>${cond}</td><td>${vTxt}</td></tr>`;
+                    html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${esc(t.casa)}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.data_envio || '-')}</td><td>${esc(t.status)}</td><td>${cond}</td><td>${vTxt}</td></tr>`;
                 });
 
             tsv += `TOTAL PREVISIONADO\t\t\t\t\t\t\t\t${fmt(totalPrev)}\n`;
@@ -2634,10 +2643,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <tr style="background-color: ${bg};">
                         <td style="padding: 8px; font-weight: bold; color: #0d6efd;">#${t.os}</td>
                         <td style="padding: 8px;">${t.nr}</td>
-                        <td style="padding: 8px;"><strong>${t.unidade}</strong></td>
-                        <td style="padding: 8px;">${t.descricao}</td>
-                        <td style="padding: 8px;">${t.status}</td>
-                        <td style="padding: 8px; text-align: center;">${t.data_envio || '-'}</td>
+                        <td style="padding: 8px;"><strong>${esc(t.unidade)}</strong></td>
+                        <td style="padding: 8px;">${esc(t.descricao)}</td>
+                        <td style="padding: 8px;">${esc(t.status)}</td>
+                        <td style="padding: 8px; text-align: center;">${esc(t.data_envio || '-')}</td>
                         <td style="padding: 8px; text-align: center;">${orcTxt}</td>
                         <td style="padding: 8px; text-align: center; font-weight: bold;">${diasTxt}</td>
                         <td style="padding: 8px; text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
@@ -2696,7 +2705,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const valorTxt = fmt(t.valor);
 
                 tsv += `${t.os}\t${t.nr}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.status}\t${t.data_envio || '-'}\t${orcTxt}\t${diasTxt}\t${valorTxt}\n`;
-                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.status}</td><td>${t.data_envio || '-'}</td><td>${orcTxt}</td><td>${diasTxt}</td><td>${valorTxt}</td></tr>`;
+                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.status)}</td><td>${esc(t.data_envio || '-')}</td><td>${orcTxt}</td><td>${diasTxt}</td><td>${valorTxt}</td></tr>`;
             });
 
             tsv += `TOTAL GERAL\t\t\t\t\t\t\t\t${fmt(total)}\n`;
@@ -2792,7 +2801,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const totalPrev = listaPrev.reduce((acc, t) => acc + (t.valor || 0), 0);
             const orcadas = listaPrev.filter(t => (t.valor || 0) > 0);
 
-            const teto = 1440000.00;
+            const teto = DATA.teto_contrato;
             const totalComprometido = totalAnualCasa + totalPrev;
             const saldoEstimado = teto - totalComprometido;
 
@@ -2856,10 +2865,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <tr style="background-color: ${bg};">
                             <td style="padding: 5px 6px; border: 1px solid #cbd5e1; font-weight: bold; color: #4338ca;">#${t.os}</td>
                             <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.nr}</td>
-                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;"><strong>${t.unidade}</strong></td>
-                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.descricao}</td>
-                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.data_envio || '-'}</td>
-                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.status}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;"><strong>${esc(t.unidade)}</strong></td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${esc(t.descricao)}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${esc(t.data_envio || '-')}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${esc(t.status)}</td>
                             <td style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px; font-weight: bold;">${cond}</td>
                             <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold; color: #312e81;">${vTxt}</td>
                         </tr>
@@ -2955,7 +2964,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             statuses.forEach(s => {
                 const isActive = state.filters.listStatus === s;
                 html += `
-                    <span class="filter-chip ${isActive ? 'active' : ''}" onclick="toggleListStatus('${s}')">
+                    <span class="filter-chip ${isActive ? 'active' : ''}" onclick="toggleListStatus('${esc(s)}')">
                         ${s}
                     </span>
                 `;
@@ -2979,7 +2988,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 html += `<optgroup label="🔵 UNIDADES SESI">`;
                 sesi.forEach(u => {
                     const sel = state.filters.listUnit === u ? 'selected' : '';
-                    html += `<option value="${u}" ${sel}>${u}</option>`;
+                    html += `<option value="${esc(u)}" ${sel}>${esc(u)}</option>`;
                 });
                 html += `</optgroup>`;
             }
@@ -2988,7 +2997,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 html += `<optgroup label="🟠 UNIDADES SENAI">`;
                 senai.forEach(u => {
                     const sel = state.filters.listUnit === u ? 'selected' : '';
-                    html += `<option value="${u}" ${sel}>${u}</option>`;
+                    html += `<option value="${esc(u)}" ${sel}>${esc(u)}</option>`;
                 });
                 html += `</optgroup>`;
             }
@@ -2997,7 +3006,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 html += `<optgroup label="⚪ OUTRAS">`;
                 outras.forEach(u => {
                     const sel = state.filters.listUnit === u ? 'selected' : '';
-                    html += `<option value="${u}" ${sel}>${u}</option>`;
+                    html += `<option value="${esc(u)}" ${sel}>${esc(u)}</option>`;
                 });
                 html += `</optgroup>`;
             }
@@ -3139,7 +3148,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const valor = unitData[unit].valor;
                 return `
                     <div class="unit-card unit-card-${casaClass}">
-                        <div class="unit-card-name" title="${unit}">${unit}</div>
+                        <div class="unit-card-name" title="${esc(unit)}">${esc(unit)}</div>
                         <div class="unit-card-info">
                             <div>
                                 <div class="unit-card-label">Chamados</div>
@@ -3249,10 +3258,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <tr>
                             <td style="font-weight: 600; color: #0d6efd;">#${t.os}</td>
                             <td>${t.nr}</td>
-                            <td><strong>${t.unidade}</strong></td>
-                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
-                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
-                            <td style="text-align: center; font-size: 12px; font-weight: 600; color: #334155;">${t.data_envio || '-'}</td>
+                            <td><strong>${esc(t.unidade)}</strong></td>
+                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(t.descricao)}">${esc(t.descricao)}</td>
+                            <td><span class="status-badge ${statusClass}">${esc(t.status)}</span></td>
+                            <td style="text-align: center; font-size: 12px; font-weight: 600; color: #334155;">${esc(t.data_envio || '-')}</td>
                             ${orcHTML}
                             ${diasHTML}
                             <td style="text-align: right; font-weight: 600;">R$ ${valorFmt}</td>
@@ -3297,7 +3306,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 st.subheader("📊 Dashboard Interativo")
 
-html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
+html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
 
 st.components.v1.html(html_content, height=1400, scrolling=True)
 
