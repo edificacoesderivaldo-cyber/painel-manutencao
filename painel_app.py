@@ -21,17 +21,30 @@ if not uploaded_file:
     st.stop()
 
 try:
-    df_os = pd.read_excel(uploaded_file, sheet_name='O.S', header=2)
+    excel_file = pd.ExcelFile(uploaded_file)
+    sheet_os = next((s for s in excel_file.sheet_names if any(k in s.upper() for k in ['O.S', 'OS', 'CHAMADO'])), excel_file.sheet_names[0])
+    
+    # Identifica dinamicamente em qual linha está o cabeçalho (evita erros se houver linhas no topo)
+    df_raw = pd.read_excel(excel_file, sheet_name=sheet_os, header=None)
+    header_row_idx = 2  # Padrão original
+    for idx in range(min(12, len(df_raw))):
+        row_values = [str(val).strip().upper() for val in df_raw.iloc[idx].dropna()]
+        matches = sum(1 for v in row_values if any(k in v for k in ['O.S', 'OS', 'STATUS', 'UNIDADE', 'DESCRI', 'VALOR', 'NR']))
+        if matches >= 2:
+            header_row_idx = idx
+            break
+
+    df_os = pd.read_excel(excel_file, sheet_name=sheet_os, header=header_row_idx)
+    df_os.columns = [str(c).strip() for c in df_os.columns]
 except Exception as e:
-    st.error(f"❌ Erro ao carregar aba 'O.S': {e}")
+    st.error(f"❌ Erro ao carregar aba de chamados: {e}")
     st.stop()
 
 try:
-    df_saldo = pd.read_excel(uploaded_file, sheet_name='SALDO', header=0)
+    sheet_saldo = next((s for s in excel_file.sheet_names if 'SALDO' in s.upper()), None)
+    df_saldo = pd.read_excel(excel_file, sheet_name=sheet_saldo, header=0) if sheet_saldo else None
 except Exception:
     df_saldo = None
-
-df_os = df_os.dropna(subset=['O.S']).copy()
 
 def norm_status(s):
     if pd.isna(s) or s == '': return "SEM STATUS"
@@ -40,25 +53,71 @@ def norm_status(s):
     return mapping.get(s, s)
 
 def norm_unidade(u):
-    if pd.isna(u): return "NÃO INFORMADA"
+    if pd.isna(u) or str(u).strip() == '': return "NÃO INFORMADA"
     return str(u).strip().upper().replace("GUARA", "GUARÁ")
 
-status_col = next((c for c in df_os.columns if 'STATUS' in c.upper()), 'STATUS')
-unidade_col = next((c for c in df_os.columns if 'UNIDADE' in c.upper()), 'UNIDADE')
+# Detecção ultra-resiliente de O.S. (evita KeyError caso a coluna venha como OS, O.S., etc.)
+os_col = next((c for c in df_os.columns if any(k == str(c).strip().upper() for k in ['O.S', 'OS', 'O.S.', 'Nº OS', 'NUMERO OS', 'ORDEM DE SERVIÇO', 'ORDEM DE SERVICO'])), None)
+if not os_col:
+    os_col = next((c for c in df_os.columns if any(k in str(c).strip().upper() for k in ['O.S', 'OS', 'ORDEM'])), None)
 
-df_os['STATUS'] = df_os[status_col].apply(norm_status)
-df_os['UNIDADE'] = df_os[unidade_col].apply(norm_unidade)
+if os_col and os_col in df_os.columns:
+    df_os = df_os.dropna(subset=[os_col]).copy()
+    df_os['O.S'] = pd.to_numeric(df_os[os_col], errors='coerce').fillna(0).astype(int)
+    df_os = df_os[df_os['O.S'] > 0].copy()
+else:
+    df_os['O.S'] = range(1, len(df_os) + 1)
 
-valor_col = next((c for c in df_os.columns if 'VALOR' in c.upper() and 'INICIAL' in c.upper()), None)
-if valor_col:
+# Detecção ultra-resiliente da coluna UNIDADE (por nome ou pelo conteúdo das células)
+unidade_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['UNIDADE', 'UNID', 'ESCOLA', 'LOCALIDADE', 'LOCAL', 'PREDIO', 'CENTRO'])), None)
+
+if not unidade_col:
+    # Fallback inteligente: procura qual coluna contém os nomes conhecidos das unidades
+    for col in df_os.columns:
+        sample = df_os[col].dropna().astype(str).str.upper()
+        if len(sample) > 0:
+            match_count = sample.apply(lambda x: any(u in x for u in ['SESI', 'SENAI', 'GAMA', 'TAGUATINGA', 'SOBRADINHO', 'GUARÁ', 'GUARA', 'SIA', 'SEDE', 'PARK', 'SIG', 'JOÃO XXIII', 'JOAO XXIII', 'DN'])).sum()
+            if match_count >= 2:
+                unidade_col = col
+                break
+
+if unidade_col and unidade_col in df_os.columns:
+    df_os['UNIDADE'] = df_os[unidade_col].apply(norm_unidade)
+else:
+    df_os['UNIDADE'] = 'NÃO INFORMADA'
+
+# Detecção ultra-resiliente da coluna STATUS
+status_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['STATUS', 'SITUAÇÃO', 'SITUACAO', 'ESTADO'])), None)
+if not status_col:
+    for col in df_os.columns:
+        sample = df_os[col].dropna().astype(str).str.upper()
+        if len(sample) > 0:
+            match_count = sample.apply(lambda x: any(st in x for st in ['CONCLUID', 'EXECU', 'ORÇAM', 'ORCAM', 'PARALIS', 'LIBERAD', 'PROJETO', 'PLANEJA'])).sum()
+            if match_count >= 2:
+                status_col = col
+                break
+
+if status_col and status_col in df_os.columns:
+    df_os['STATUS'] = df_os[status_col].apply(norm_status)
+else:
+    df_os['STATUS'] = 'SEM STATUS'
+
+# Detecção de Valor
+valor_col = next((c for c in df_os.columns if 'VALOR' in str(c).upper() and any(k in str(c).upper() for k in ['INICIAL', 'TOTAL', 'ORÇ', 'ORC', 'SERVIÇO', 'SERVICO'])), None)
+if not valor_col:
+    valor_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['VALOR', 'PREÇO', 'PRECO', 'R$'])), None)
+
+if valor_col and valor_col in df_os.columns:
     df_os[valor_col] = pd.to_numeric(df_os[valor_col], errors='coerce').fillna(0.0)
 
-desc_col = next((c for c in df_os.columns if 'DESCRI' in c.upper()), None)
-nr_col = next((c for c in df_os.columns if c.strip().upper() == 'NR'), None)
-os_col = next((c for c in df_os.columns if 'O.S' in c.upper() or 'OS' in c.upper()), 'O.S')
+# Detecção de Descrição e NR
+desc_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['DESCRI', 'SERVIÇO', 'SERVICO', 'ESCOPO', 'OBJETO'])), None)
+nr_col = next((c for c in df_os.columns if str(c).strip().upper() in ['NR', 'NR.', 'Nº', 'NUMERO', 'ITEM', 'N']), None)
 
-df_os['NR'] = pd.to_numeric(df_os[nr_col], errors='coerce').fillna(0).astype(int) if nr_col else 0
-df_os['O.S'] = pd.to_numeric(df_os[os_col], errors='coerce').fillna(0).astype(int)
+if nr_col and nr_col in df_os.columns:
+    df_os['NR'] = pd.to_numeric(df_os[nr_col], errors='coerce').fillna(0).astype(int)
+else:
+    df_os['NR'] = 0
 
 def parse_data_br(val):
     """
