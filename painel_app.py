@@ -36,10 +36,17 @@ st.markdown("""
 # ==============================================================================
 # FUNÇÕES DE PROCESSAMENTO E NORMALIZAÇÃO DE DADOS
 # ==============================================================================
-def norm_str(s):
-    if pd.isna(s) or s is None:
+def clean_text(val):
+    if pd.isna(val) or val is None:
         return ""
-    return str(s).strip()
+    s = str(val).strip().upper()
+    s = re.sub(r'[ÁÀÃÂ]', 'A', s)
+    s = re.sub(r'[ÉÈÊ]', 'E', s)
+    s = re.sub(r'[ÍÌÎ]', 'I', s)
+    s = re.sub(r'[ÓÒÕÔ]', 'O', s)
+    s = re.sub(r'[ÚÙÛ]', 'U', s)
+    s = re.sub(r'[Ç]', 'C', s)
+    return s
 
 def norm_unidade(u):
     if pd.isna(u) or u is None:
@@ -59,8 +66,8 @@ def norm_unidade(u):
     return s
 
 def detectar_casa(unidade_str, entidade_cnpj=""):
-    u = (unidade_str or "").upper()
-    e = (entidade_cnpj or "").upper()
+    u = clean_text(unidade_str)
+    e = clean_text(entidade_cnpj)
     if "FIBRA" in e or "FIBRA" in u:
         return "FIBRA"
     if "SENAI" in e or "SENAI" in u:
@@ -69,10 +76,58 @@ def detectar_casa(unidade_str, entidade_cnpj=""):
         return "SESI"
     return "SESI"
 
+def parse_valor(val):
+    """
+    Interpretação numérica robusta para evitar a multiplicação indevida de decimais.
+    """
+    if pd.isna(val) or val is None:
+        return 0.0
+    if isinstance(val, (int, float, np.number)):
+        return float(val) if not np.isnan(val) else 0.0
+    
+    s = str(val).strip()
+    if not s or s.lower() in ['nan', 'none', '-', '']:
+        return 0.0
+    
+    # Remove R$, espaços e caracteres estranhos
+    s = re.sub(r'[R$\s]', '', s)
+    
+    # Trata padrão brasileiro "12.345,67" vs "1234.56"
+    if ',' in s and '.' in s:
+        s = s.replace('.', '').replace(',', '.')
+    elif ',' in s:
+        s = s.replace(',', '.')
+    elif '.' in s:
+        if s.count('.') > 1:
+            s = s.replace('.', '')
+            
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+def is_liberado_nfe(val):
+    """
+    Verificação abrangente para reconhecer variações de liberação para NF-e.
+    """
+    if pd.isna(val) or val is None:
+        return False
+    s = clean_text(val)
+    if not s or s in ['NAN', 'NONE', '-', 'NAO']:
+        return False
+    if 'LIBERAD' in s and ('NF' in s or 'NOTA' in s):
+        return True
+    if 'LIBERAD' in s and 'SIM' in s:
+        return True
+    if 'LIBERADO P/' in s or 'LIBERADO PARA' in s or 'LIBERADO P' in s:
+        return True
+    if s in ['LIBERADO', 'LIBERADA', 'SIM', 'APROVADO', 'APROVADA', 'FATURAR', 'PAGO']:
+        return True
+    return False
+
 def parse_data_br(val):
     """
     Interpretação rigorosa de datas brasileiras no padrão DIA/MÊS/ANO (DD/MM/AAAA).
-    Não realiza inversão automática entre dia e mês.
     """
     if pd.isna(val) or val is None:
         return None
@@ -87,17 +142,11 @@ def parse_data_br(val):
     if len(parts) == 3:
         p0, p1, p2 = parts[0], parts[1], parts[2]
         try:
-            # Caso esteja no formato AAAA-MM-DD
             if len(p0) == 4:
-                ano = int(p0)
-                mes = int(p1)
-                dia = int(p2)
+                ano, mes, dia = int(p0), int(p1), int(p2)
                 return f"{dia:02d}/{mes:02d}/{ano:04d}"
-            # Caso padrão brasileiro DD/MM/AAAA
             elif len(p2) == 4 or len(p2) == 2:
-                dia = int(p0)
-                mes = int(p1)
-                ano = int(p2)
+                dia, mes, ano = int(p0), int(p1), int(p2)
                 if ano < 100:
                     ano += 2000
                 return f"{dia:02d}/{mes:02d}/{ano:04d}"
@@ -152,14 +201,18 @@ try:
     xl = pd.ExcelFile(uploaded_file)
     target_sheet = 'O.S' if 'O.S' in xl.sheet_names else xl.sheet_names[0]
     
-    # Detecção dinâmica da linha do cabeçalho nas primeiras 15 linhas
+    # Detecção inteligente da linha do cabeçalho
     df_raw = xl.parse(target_sheet, header=None, nrows=15)
-    header_idx = 0
+    header_idx = 2
+    max_score = 0
+    key_headers = ['OS', 'UNIDADE', 'STATUS', 'VALOR', 'DESCRI', 'NR', 'COMPET', 'NFE', 'LIBERA']
+    
     for idx, row in df_raw.iterrows():
-        row_str = " ".join([str(v).upper() for v in row.values if pd.notna(v)])
-        if ("O.S" in row_str or "OS" in row_str) and ("STATUS" in row_str or "UNIDADE" in row_str or "DESCRI" in row_str or "VALOR" in row_str):
+        row_words = " ".join([clean_text(v) for v in row.values if pd.notna(v)])
+        score = sum(1 for kw in key_headers if kw in row_words)
+        if score > max_score and score >= 3:
+            max_score = score
             header_idx = idx
-            break
             
     df_os = xl.parse(target_sheet, header=header_idx)
     df_os = df_os.dropna(how='all', axis=1)
@@ -167,36 +220,48 @@ except Exception as e:
     st.error(f"Erro ao processar o arquivo Excel: {str(e)}")
     st.stop()
 
-# Localização flexível e protegida das colunas necessárias
-cols_upper = {str(c).strip().upper(): c for c in df_os.columns}
-
-def find_col(possible_names):
-    for name in possible_names:
-        for c_up, orig in cols_upper.items():
-            if name in c_up:
-                return orig
+# Localizador inteligente de colunas
+def find_col_smart(possible_patterns, exclude_patterns=None):
+    excludes = [clean_text(x) for x in (exclude_patterns or [])]
+    for pat in possible_patterns:
+        pat_clean = clean_text(pat)
+        for c in df_os.columns:
+            c_clean = clean_text(c)
+            if any(ex in c_clean for ex in excludes):
+                continue
+            if pat_clean in c_clean:
+                return c
     return None
 
-os_col = find_col(['O.S', 'Nº O.S', 'NUMERO O.S', 'NUMERO DA O.S', 'OS'])
-nr_col = find_col(['NR', 'Nº', 'ITEM', 'NUM'])
-unidade_col = find_col(['UNIDADE', 'UNID', 'ESCOLA', 'LOCAL', 'PREDIO'])
-status_col = find_col(['STATUS DA O.S', 'STATUS O.S', 'STATUS', 'SITUAÇÃO'])
-valor_col = find_col(['VALOR A FATURAR', 'VALOR FATURAR', 'VALOR ORÇADO', 'VALOR', 'INVESTIMENTO'])
-mes_comp_col = find_col(['MÊS COMPETÊNCIA', 'MES COMPETENCIA', 'COMPETÊNCIA', 'COMPETENCIA', 'MÊS', 'MES'])
-nfe_status_col = find_col(['LIBERAÇÃO P/ NFE', 'LIBERACAO P/ NFE', 'NFE', 'NOTA FISCAL', 'LIBERAÇÃO', 'LIBERACAO'])
-data_envio_col = find_col(['DATA ENVIO', 'DATA DE ENVIO', 'DT ENVIO', 'DATA ABERTURA'])
-data_orc_col = find_col(['ENTREGA ORÇAMENTO', 'ENTREGA ORCAMENTO', 'DATA ORÇAMENTO', 'DT ORCAMENTO'])
+os_col = find_col_smart(['NUMERO OS', 'NUMERO DA OS', 'N OS', 'O.S', 'OS'], exclude_patterns=['STATUS', 'VALOR', 'DATA', 'DESCR'])
+nr_col = find_col_smart(['NR', 'NUM', 'ITEM'])
+unidade_col = find_col_smart(['UNIDADE', 'UNID', 'ESCOLA', 'LOCAL', 'PREDIO'])
+status_col = find_col_smart(['STATUS DA OS', 'STATUS OS', 'STATUS', 'SITUACAO'])
+valor_col = find_col_smart(['VALOR A FATURAR', 'VALOR FATURAR', 'VALOR ORCADO', 'VALOR TOTAL', 'VALOR', 'INVESTIMENTO'], exclude_patterns=['PREVISAO', 'SALDO'])
+mes_comp_col = find_col_smart(['MES COMPETENCIA', 'COMPETENCIA', 'MES DE COMPETENCIA', 'MES', 'COMP'])
+nfe_status_col = find_col_smart(['LIBERACAO P/ NFE', 'LIBERADO P/ NFE', 'LIBERACAO PARA NFE', 'LIBERADO PARA NFE', 'LIBERACAO NFE', 'LIBERADO NFE', 'LIBERACAO NF', 'LIBERADO NF', 'LIBERACAO', 'LIBERADO', 'NFE', 'NOTA FISCAL'], exclude_patterns=['DATA', 'VALOR', 'NUMERO'])
+data_envio_col = find_col_smart(['DATA ENVIO', 'DATA DE ENVIO', 'DT ENVIO', 'DATA ABERTURA', 'DATA CHAMADO'])
+data_orc_col = find_col_smart(['ENTREGA ORCAMENTO', 'DATA ORCAMENTO', 'DT ORCAMENTO', 'PREVISAO ORCAMENTO'])
 
-# Busca prioritária para a Descrição Resumida (evitando colunas de data/hora/valor)
-desc_col = None
-for c_up, orig in cols_upper.items():
-    if "DESCRI" in c_up and "RESUM" in c_up:
-        desc_col = orig
-        break
+# Busca prioritária da Descrição Resumida
+desc_col = find_col_smart(['DESCRICAO RESUMIDA DOS SERVICOS', 'DESCRICAO RESUMIDA', 'RESUMO DO SERVICO', 'RESUMO'])
 if not desc_col:
-    for c_up, orig in cols_upper.items():
-        if ("DESCRI" in c_up or "SERVIÇO" in c_up or "SERVICO" in c_up) and not any(k in c_up for k in ["DATA", "DT", "HORA", "VALOR", "STATUS", "PREVISÃO"]):
-            desc_col = orig
+    desc_col = find_col_smart(['DESCRICAO', 'SERVICO', 'OBJETO'], exclude_patterns=['DATA', 'DT', 'HORA', 'VALOR', 'STATUS', 'PREVISAO', 'UNIDADE', 'NFE', 'NUMERO', 'OS'])
+
+# Fallback para coluna NFE caso não identificada por cabeçalho
+if not nfe_status_col:
+    for col in df_os.columns:
+        sample_vals = " ".join([str(v).upper() for v in df_os[col].dropna().head(20)])
+        if 'LIBERAD' in sample_vals and 'NF' in sample_vals:
+            nfe_status_col = col
+            break
+
+# Fallback para coluna de Unidade
+if not unidade_col:
+    for col in df_os.columns:
+        sample_vals = " ".join([str(v).upper() for v in df_os[col].dropna().head(15)])
+        if any(k in sample_vals for k in ['SESI', 'SENAI', 'TAGUATINGA', 'GAMA']):
+            unidade_col = col
             break
 
 # Tetos Contratuais Homologados
@@ -208,7 +273,7 @@ if 'SALDO' in xl.sheet_names:
     try:
         df_saldo = xl.parse('SALDO')
         for idx, row in df_saldo.iterrows():
-            r_str = " ".join([str(v).upper() for v in row.values if pd.notna(v)])
+            r_str = " ".join([clean_text(v) for v in row.values if pd.notna(v)])
             if "FIBRA" in r_str:
                 for v in row.values:
                     if isinstance(v, (int, float)) and v > 1000:
@@ -233,43 +298,47 @@ valid_rows = df_os[df_os[os_col].notna()] if os_col else df_os
 
 for _, row in valid_rows.iterrows():
     raw_os = str(row[os_col]).split('.')[0].strip() if os_col and pd.notna(row[os_col]) else ""
-    if not raw_os or raw_os.upper() in ["TOTAL", "SUBTOTAL"]:
+    if not raw_os or raw_os.upper() in ["TOTAL", "SUBTOTAL", "NAN", "NONE"] or raw_os == "-":
         continue
         
     nr_val = str(row[nr_col]).split('.')[0].strip() if nr_col and pd.notna(row[nr_col]) else "-"
     unidade_val = norm_unidade(row[unidade_col]) if unidade_col and pd.notna(row[unidade_col]) else "NÃO INFORMADA"
     status_val = str(row[status_col]).strip().upper() if status_col and pd.notna(row[status_col]) else "SEM STATUS"
     
-    # Tratamento da Descrição Resumida (eliminando datas acidentais)
+    # Descrição Resumida (blindada contra datas acidentais)
     desc_val = ""
     if desc_col and pd.notna(row[desc_col]):
         raw_desc = str(row[desc_col]).strip()
         if not re.match(r'^\d{4}-\d{2}-\d{2}', raw_desc) and not re.match(r'^\d{2}/\d{2}/\d{4}', raw_desc):
             desc_val = raw_desc
+            
     if not desc_val:
-        for c_up, orig in cols_upper.items():
-            if orig != desc_col and any(k in c_up for k in ["DESC", "SERVIC", "OBJETO", "ITEM"]):
-                if not any(k in c_up for k in ["DATA", "DT", "HORA", "VALOR", "STATUS", "PREVISÃO"]):
-                    cand = str(row[orig]).strip() if pd.notna(row[orig]) else ""
+        for col in df_os.columns:
+            if col != desc_col and any(k in clean_text(col) for k in ["DESC", "SERVIC", "OBJETO", "ITEM"]):
+                if not any(k in clean_text(col) for k in ["DATA", "DT", "HORA", "VALOR", "STATUS", "PREVISAO", "UNIDADE"]):
+                    cand = str(row[col]).strip() if pd.notna(row[col]) else ""
                     if cand and not re.match(r'^\d{4}-\d{2}-\d{2}', cand) and not re.match(r'^\d{2}/\d{2}/\d{4}', cand):
                         desc_val = cand
                         break
             
-    # Tratamento de valores financeiros
-    val_num = 0.0
-    if valor_col and pd.notna(row[valor_col]):
-        try:
-            val_clean = str(row[valor_col]).replace('R$', '').replace('.', '').replace(',', '.').strip()
-            val_num = float(val_clean)
-        except Exception:
-            try:
-                val_num = float(row[valor_col])
-            except Exception:
-                val_num = 0.0
+    # Tratamento numérico rigoroso
+    val_num = parse_valor(row[valor_col]) if valor_col else 0.0
                 
-    # Competência e NFE
-    mes_comp = str(row[mes_comp_col]).strip().upper() if mes_comp_col and pd.notna(row[mes_comp_col]) else "NÃO DEFINIDO"
-    nfe_val = str(row[nfe_status_col]).strip().upper() if nfe_status_col and pd.notna(row[nfe_status_col]) else ""
+    # Competência
+    raw_comp = str(row[mes_comp_col]).strip().upper() if mes_comp_col and pd.notna(row[mes_comp_col]) else "NÃO DEFINIDO"
+    mes_comp = raw_comp
+    if re.match(r'^\d{4}-\d{2}', raw_comp):
+        try:
+            mes_num = int(raw_comp[5:7])
+            meses_nomes = ['', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO']
+            if 1 <= mes_num <= 12:
+                mes_comp = meses_nomes[mes_num]
+        except Exception:
+            pass
+            
+    # Verificação de Liberação para NF-e
+    raw_nfe = str(row[nfe_status_col]).strip() if nfe_status_col and pd.notna(row[nfe_status_col]) else ""
+    liberado_ok = is_liberado_nfe(raw_nfe)
     
     # Datas no padrão brasileiro
     dt_envio_br = parse_data_br(row[data_envio_col]) if data_envio_col and pd.notna(row[data_envio_col]) else None
@@ -287,7 +356,7 @@ for _, row in valid_rows.iterrows():
         "descricao": desc_val,
         "status": status_val,
         "mes_competencia": mes_comp,
-        "liberado_nfe": "LIBERADO P/ NFE" if ("LIBERADO" in nfe_val and "NFE" in nfe_val) else nfe_val,
+        "liberado_nfe": "LIBERADO P/ NFE" if liberado_ok else raw_nfe,
         "valor": val_num,
         "data_envio": dt_envio_br or "-",
         "entrega_orcamento": prazo_orc_txt,
