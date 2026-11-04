@@ -270,7 +270,7 @@ data = {
     'contracts': {
         'sesi': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0},
         'senai': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0},
-        'fibra': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0}
+        'fibra': {'contrato': 80000.0, 'utilizado': 0.0, 'saldo': 80000.0}
     }
 }
 
@@ -1226,7 +1226,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             📐 MEDIÇÕES — Controle de Medição Contratual
                         </h2>
                         <p style="font-size: 13px; color: #64748b; margin-top: 4px;">
-                            Livro Oficial de Medições: itens faturados (LIBERADO P/ NFE) com teto e saldo contratual de R$ 1.440.000,00 por Entidade
+                            Livro Oficial de Medições: itens faturados (LIBERADO P/ NFE) com teto e saldo contratual homologado por Entidade
                         </p>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
@@ -1239,7 +1239,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <button class="btn-print no-print" onclick="imprimirPainel('painelMedicoes', 'Boletim de Medição Contratual')" title="Imprimir Relatório Oficial de Medição">
                             🖨️ Imprimir Medição
                         </button>
-                        <div style="font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 6px 12px; border-radius: 20px; font-weight: 700;">
+                        <div id="medHeaderTetoBadge" style="font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 6px 12px; border-radius: 20px; font-weight: 700;">
                             Contrato: R$ 1.440.000,00 por Entidade
                         </div>
                     </div>
@@ -1667,7 +1667,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const contracts = DATA.contracts || {};
             const sesi = contracts.sesi || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
             const senai = contracts.senai || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
-            const fibra = contracts.fibra || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
+            const fibra = contracts.fibra || { contrato: 80000, utilizado: 0, saldo: 80000 };
 
             const sesiPct = Math.min(100, (sesi.utilizado / sesi.contrato) * 100).toFixed(1);
             const senaiPct = Math.min(100, (senai.utilizado / senai.contrato) * 100).toFixed(1);
@@ -2037,7 +2037,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const countSemValor = ticketsCasa.filter(t => t.status !== 'CONCLUIDO' && ((t.valor || 0) === 0)).length;
             const totalItensFuturos = countPrevisaoFutura + countSemValor;
 
-            const tetoContrato = (DATA.contracts && DATA.contracts[casaAtual.toLowerCase()] && DATA.contracts[casaAtual.toLowerCase()].contrato) || 1440000.00;
+            const tetoContrato = (DATA.contracts && DATA.contracts[casaAtual.toLowerCase()] && DATA.contracts[casaAtual.toLowerCase()].contrato) || (casaAtual === 'FIBRA' ? 80000.00 : 1440000.00);
             const saldoContratoReal = Math.max(0, tetoContrato - totalAnualCasa);
             const pctSaldoReal = ((saldoContratoReal / tetoContrato) * 100).toFixed(1);
 
@@ -2049,6 +2049,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const pctSaldoEstimado = ((saldoEstimado / tetoContrato) * 100).toFixed(1);
 
             const casaColor = casaAtual === 'SESI' ? '#0284c7' : (casaAtual === 'SENAI' ? '#ea580c' : '#7c3aed');
+
+            const headerTetoBadge = document.getElementById('medHeaderTetoBadge');
+            if (headerTetoBadge) {
+                headerTetoBadge.textContent = `Contrato ${casaAtual}: R$ ${fmt(tetoContrato)}`;
+                headerTetoBadge.style.color = casaColor;
+                headerTetoBadge.style.background = casaAtual === 'SESI' ? '#e0f2fe' : (casaAtual === 'SENAI' ? '#ffedd5' : '#f3e8ff');
+            }
 
             const medKpiValEl = document.getElementById('medKpiValor');
             if (medKpiValEl) medKpiValEl.textContent = `R$ ${fmt(totalMedicao)}`;
@@ -2097,6 +2104,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             if (kpiSaldoEstimadoVal) kpiSaldoEstimadoVal.textContent = `R$ ${fmt(saldoEstimado)}`;
 
+            const limCritico = tetoContrato * 0.10;
+            const limAtencao = tetoContrato * 0.25;
+
             if (kpiSaldoEstimadoVal && kpiSaldoEstimadoSub) {
                 if (saldoEstimado < 0) {
                     kpiSaldoEstimadoVal.style.color = '#dc2626';
@@ -2108,7 +2118,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         badgeRisco.style.borderColor = '#fecaca';
                         badgeRisco.textContent = '⛔ ESTOURO PROJETADO (CONTRATO ESGOTADO)';
                     }
-                } else if (saldoEstimado < 100000) {
+                } else if (saldoEstimado < limCritico) {
                     kpiSaldoEstimadoVal.style.color = '#ea580c';
                     kpiSaldoEstimadoSub.innerHTML = `⚠️ <strong style="color: #ea580c;">MARGEM CRÍTICA:</strong> Apenas ${pctSaldoEstimado}% livre no teto`;
                     if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#ea580c';
@@ -2118,7 +2128,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         badgeRisco.style.borderColor = '#fed7aa';
                         badgeRisco.textContent = '🔴 ALERTA CRÍTICO (LIMITE QUASE ESGOTADO)';
                     }
-                } else if (saldoEstimado < 300000) {
+                } else if (saldoEstimado < limAtencao) {
                     kpiSaldoEstimadoVal.style.color = '#d97706';
                     kpiSaldoEstimadoSub.innerHTML = `Margem de atenção: ${pctSaldoEstimado}% livre (${fmt(saldoEstimado)})`;
                     if (cardSaldoEstimado) cardSaldoEstimado.style.borderLeftColor = '#f59e0b';
@@ -2141,8 +2151,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             }
 
+            const tetoResumoTxt = casaAtual === 'FIBRA' ? 'R$ 80 mil' : 'R$ 1,44M';
             const barLabel = document.getElementById('medBarraComprometidoLabel');
-            if (barLabel) barLabel.textContent = `${pctComprometido}% do teto consumido (R$ ${fmt(totalComprometido)} de R$ 1,44M)`;
+            if (barLabel) barLabel.textContent = `${pctComprometido}% do teto consumido (R$ ${fmt(totalComprometido)} de ${tetoResumoTxt})`;
             const barMed = document.getElementById('medBarraMedido');
             if (barMed) {
                 barMed.style.width = `${pctMedido}%`;
@@ -2541,13 +2552,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             const totalPrev = lista.reduce((acc, t) => acc + (t.valor || 0), 0);
             const orcadas = lista.filter(t => (t.valor || 0) > 0);
+            const tetoCasa = (DATA.contracts && DATA.contracts[casaAtual.toLowerCase()] && DATA.contracts[casaAtual.toLowerCase()].contrato) || (casaAtual === 'FIBRA' ? 80000.00 : 1440000.00);
 
             let html = `
                 <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5;">
                     <div style="padding: 12px 16px; background-color: #eef2ff; border-left: 5px solid #4f46e5; margin-bottom: 14px; border-radius: 4px;">
-                        <h3 style="margin: 0 0 6px 0; color: #3730a3; font-size: 16px;">🛡️️ RELATÓRIO DE O.S. COM ORÇAMENTO PREVISIONADO (PREVISÃO FUTURA)</h3>
+                        <h3 style="margin: 0 0 6px 0; color: #3730a3; font-size: 16px;">🛡 RELATÓRIO DE O.S. COM ORÇAMENTO PREVISIONADO (PREVISÃO FUTURA)</h3>
                         <p style="margin: 0; font-size: 13px; color: #4338ca;">
-                            Acompanhamento de chamados em andamento e orçamentos programados que consumirão o teto contratual de R$ 1.440.000,00.
+                            Acompanhamento de chamados em andamento e orçamentos programados que consumirão o teto contratual de R$ ${fmt(tetoCasa)}.
                         </p>
                     </div>
                     <p style="font-size: 13px; color: #334155; margin-bottom: 14px;">
@@ -2863,7 +2875,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const totalPrev = listaPrev.reduce((acc, t) => acc + (t.valor || 0), 0);
             const orcadas = listaPrev.filter(t => (t.valor || 0) > 0);
 
-            const teto = 1440000.00;
+            const teto = (DATA.contracts && DATA.contracts[casaAtual.toLowerCase()] && DATA.contracts[casaAtual.toLowerCase()].contrato) || (casaAtual === 'FIBRA' ? 80000.00 : 1440000.00);
             const totalComprometido = totalAnualCasa + totalPrev;
             const saldoEstimado = teto - totalComprometido;
 
@@ -2876,12 +2888,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             stamp.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
-                        <h1 style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
+                        <h1 style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI / FIBRA — Gestão de Manutenção Predial</h1>
                         <h2 style="font-size: 13px; font-weight: 700; color: #4338ca; margin: 0;">🛡 Relatório de Gestão de Risco & Previsão de O.S. Futuras (${casaAtual})</h2>
                     </div>
                     <div style="text-align: right; font-size: 10px; color: #64748b;">
                         <div><strong>Data de Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</div>
-                        <div>Teto Contratual: R$ 1.440.000,00 por Entidade</div>
+                        <div>Teto Contratual: R$ ${fmt(teto)} (${casaAtual})</div>
                     </div>
                 </div>
             `;
