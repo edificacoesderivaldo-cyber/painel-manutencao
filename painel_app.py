@@ -110,8 +110,57 @@ if not valor_col:
 if valor_col and valor_col in df_os.columns:
     df_os[valor_col] = pd.to_numeric(df_os[valor_col], errors='coerce').fillna(0.0)
 
-# Detecção de Descrição e NR
-desc_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['DESCRI', 'SERVIÇO', 'SERVICO', 'ESCOPO', 'OBJETO'])), None)
+# Detecção ultra-resiliente da coluna de Descrição Resumida dos Serviços
+cols_desc_prioritarias = [
+    'DESCRIÇÃO RESUMIDA', 'DESCRICAO RESUMIDA', 'DESCRIÇÃO RESUMIDA DOS SERVIÇOS',
+    'DESCRICAO RESUMIDA DOS SERVICOS', 'DESCRIÇÃO RESUMIDA DO SERVIÇO', 'DESCRICAO RESUMIDA DO SERVICO',
+    'DESC. RESUMIDA', 'DESC RESUMIDA', 'DESCRIÇÃO DO SERVIÇO', 'DESCRICAO DO SERVICO',
+    'DESCRIÇÃO DOS SERVIÇOS', 'DESCRICAO DOS SERVICOS', 'DESCRIÇÃO', 'DESCRICAO',
+    'DISCRIMINAÇÃO', 'DISCRIMINACAO', 'RESUMO DOS SERVIÇOS', 'RESUMO DO SERVIÇO', 'RESUMO',
+    'ESCOPO DO SERVIÇO', 'ESCOPO', 'OBJETO'
+]
+
+desc_col = None
+# 1. Procura por correspondência exata nos títulos prioritários
+for p in cols_desc_prioritarias:
+    match = next((c for c in df_os.columns if str(c).strip().upper() == p), None)
+    if match:
+        desc_col = match
+        break
+
+# 2. Se não encontrou exato, busca colunas com termos de descrição bloqueando expressamente nomes de colunas de data/valor/status
+termos_ignorar_desc = ['DATA', 'DT', 'DIA', 'HORA', 'PREVIS', 'VALOR', 'PREÇO', 'PRECO', 'STATUS', 'SITUAÇÃO', 'SITUACAO', 'UNIDADE', 'CASA', 'CNPJ', 'O.S', 'OS', 'NR', 'NOTA', 'NF', 'COMPETENCIA', 'MÊS', 'MES']
+
+if not desc_col:
+    candidatas_desc = []
+    for c in df_os.columns:
+        c_up = str(c).strip().upper()
+        if any(ti in c_up for ti in termos_ignorar_desc):
+            continue
+        if any(k in c_up for k in ['DESCRI', 'RESUMO', 'ESCOPO', 'OBJETO', 'DISCRIMIN']):
+            candidatas_desc.append(c)
+
+    if candidatas_desc:
+        # Avalia a melhor coluna candidata pelo tamanho do texto e termos de serviços de manutenção
+        def pontuar_coluna_texto(col):
+            s = df_os[col].dropna().astype(str).str.strip()
+            if len(s) == 0: return -999
+            dates = s.str.contains(r'^\d{4}-\d{2}-\d{2}|^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|00:00:00', regex=True).sum()
+            nums = s.str.replace(r'[\.,]', '', regex=True).str.isnumeric().sum()
+            avg_len = s.str.len().mean()
+            kw_match = s.str.upper().apply(lambda x: any(w in x for w in ['MANUTEN', 'PORTA', 'PINTUR', 'REPAR', 'INSTAL', 'VIDR', 'TELHADO', 'PISO', 'FORRO', 'ELÉTR', 'ELETR', 'LIMPEZA', 'SUBSTITU', 'SERVIÇ', 'SERVIC', 'REVISÃO', 'REVISAO'])).sum()
+            return (kw_match * 15) + (avg_len if avg_len > 8 else 0) - (dates * 100) - (nums * 50)
+
+        candidatas_desc.sort(key=pontuar_coluna_texto, reverse=True)
+        desc_col = candidatas_desc[0]
+
+# Mapeia colunas secundárias de descrição como fallback caso a principal tenha células em branco
+secondary_desc_cols = [
+    c for c in df_os.columns
+    if c != desc_col and any(k in str(c).upper() for k in ['DESCRI', 'RESUMO', 'ESCOPO', 'OBJETO', 'DISCRIMIN', 'SERVIÇO', 'SERVICO'])
+    and not any(ti in str(c).upper() for ti in termos_ignorar_desc)
+]
+
 nr_col = next((c for c in df_os.columns if str(c).strip().upper() in ['NR', 'NR.', 'Nº', 'NUMERO', 'ITEM', 'N']), None)
 
 # Detecção resiliente de coluna de Casa / Entidade / CNPJ
@@ -317,8 +366,23 @@ for _, row in df_os.iterrows():
     else:
         status_pagamento = 'PENDENTE ORÇAMENTO'
 
-    desc_val = str(row[desc_col]).strip() if desc_col and pd.notna(row[desc_col]) else ''
-    if desc_val.lower() == 'nan':
+    # Extração e saneamento rigoroso da descrição resumida (rejeita datas, timestamps e vazios)
+    desc_val = ''
+    if desc_col and pd.notna(row[desc_col]):
+        v_str = str(row[desc_col]).strip()
+        if v_str.lower() not in ['nan', 'none', '-', 'null', '0', ''] and not re.search(r'^\d{4}-\d{2}-\d{2}|00:00:00', v_str):
+            desc_val = v_str
+
+    # Se a coluna principal estava em branco ou continha timestamp de data, busca nas colunas de fallback
+    if not desc_val and secondary_desc_cols:
+        for s_col in secondary_desc_cols:
+            if pd.notna(row[s_col]):
+                s_str = str(row[s_col]).strip()
+                if s_str.lower() not in ['nan', 'none', '-', 'null', '0', ''] and not re.search(r'^\d{4}-\d{2}-\d{2}|00:00:00', s_str):
+                    desc_val = s_str
+                    break
+
+    if not desc_val or desc_val.lower() == 'nan':
         desc_val = '-'
 
     unidade_str = str(row['UNIDADE'])
@@ -1182,7 +1246,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                 <th>NR</th>
                                 <th>Entidade / CNPJ</th>
                                 <th>Unidade</th>
-                                <th>Descrição</th>
+                                <th>Descrição Resumida</th>
                                 <th>Mês Competência</th>
                                 <th>Status O.S</th>
                                 <th>Liberação p/ NFE</th>
@@ -1380,7 +1444,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                     <th>NR</th>
                                     <th>Entidade / CNPJ</th>
                                     <th>Unidade</th>
-                                    <th>Descrição</th>
+                                    <th>Descrição Resumida</th>
                                     <th>Mês Competência</th>
                                     <th>Status O.S</th>
                                     <th>Liberação p/ NFE</th>
@@ -1448,7 +1512,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                     <th>NR</th>
                                     <th>Entidade / CNPJ</th>
                                     <th>Unidade</th>
-                                    <th>Descrição do Serviço</th>
+                                    <th>Descrição Resumida</th>
                                     <th>Data Abertura</th>
                                     <th>Status O.S</th>
                                     <th>Condição</th>
@@ -1537,7 +1601,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                 <th>O.S</th>
                                 <th>NR</th>
                                 <th>Unidade</th>
-                                <th>Descrição</th>
+                                <th>Descrição Resumida</th>
                                 <th>Status</th>
                                 <th>Data Envio (DD/MM/AAAA)</th>
                                 <th>Entrega Orçamento</th>
