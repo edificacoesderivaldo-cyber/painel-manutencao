@@ -78,7 +78,7 @@ def detectar_casa(unidade_str, entidade_cnpj=""):
 
 def parse_valor(val):
     """
-    Interpretação numérica segura para impedir multiplicação de valores decimais.
+    Interpretação numérica segura para impedir multiplicação acidental de valores decimais.
     """
     if pd.isna(val) or val is None:
         return 0.0
@@ -92,22 +92,20 @@ def parse_valor(val):
     # Remove símbolos de moeda e espaços
     s = re.sub(r'[R$\s]', '', s)
     
-    # Caso 1: Padrão brasileiro "12.345,67" (contém ponto de milhar e vírgula decimal)
+    # Padrão brasileiro "12.345,67" (ponto de milhar e vírgula decimal)
     if '.' in s and ',' in s:
         s = s.replace('.', '').replace(',', '.')
-    # Caso 2: Apenas vírgula "1234,56"
+    # Apenas vírgula "1234,56"
     elif ',' in s:
         s = s.replace(',', '.')
-    # Caso 3: Apenas ponto "25289.47" (float em texto) ou "1.440.000" (milhar)
+    # Apenas ponto "25289.47" (float em texto) ou "1.440.000" (milhar)
     elif '.' in s:
         if s.count('.') > 1:
             s = s.replace('.', '')
         else:
             parts = s.split('.')
-            # Se tiver exatamente 3 dígitos após o ponto e for inteiro, pode ser milhar (ex: "1.440")
             if len(parts[1]) == 3 and len(parts[0]) <= 3:
                 s = s.replace('.', '')
-            # Caso contrário é ponto decimal normal ("25289.47") -> mantém!
             
     try:
         return float(s)
@@ -303,7 +301,7 @@ for _, row in valid_rows.iterrows():
     unidade_val = norm_unidade(row[unidade_col]) if unidade_col and pd.notna(row[unidade_col]) else "NÃO INFORMADA"
     status_val = str(row[status_col]).strip().upper() if status_col and pd.notna(row[status_col]) else "SEM STATUS"
     
-    # Descrição Resumida (com filtro contra carimbos de data/hora acidentais)
+    # Descrição Resumida (com proteção contra carimbos de data/hora acidentais)
     desc_val = ""
     if desc_col and pd.notna(row[desc_col]):
         raw_desc = str(row[desc_col]).strip()
@@ -319,7 +317,7 @@ for _, row in valid_rows.iterrows():
                         desc_val = cand
                         break
             
-    # Tratamento numérico rigoroso
+    # Tratamento numérico seguro
     val_num = parse_valor(row[valor_col]) if valor_col else 0.0
                 
     # Competência
@@ -334,11 +332,11 @@ for _, row in valid_rows.iterrows():
         except Exception:
             pass
             
-    # Verificação de Liberação para NF-e
+    # Liberação para NF-e
     raw_nfe = str(row[nfe_status_col]).strip() if nfe_status_col and pd.notna(row[nfe_status_col]) else ""
     liberado_ok = is_liberado_nfe(raw_nfe)
     
-    # Datas no formato brasileiro
+    # Datas no padrão brasileiro
     dt_envio_br = parse_data_br(row[data_envio_col]) if data_envio_col and pd.notna(row[data_envio_col]) else None
     dt_orc_br = parse_data_br(row[data_orc_col]) if data_orc_col and pd.notna(row[data_orc_col]) else None
     
@@ -899,7 +897,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
                     <span>🟢 Margem Livre Restante</span>
                 </div>
 
-                <!-- Gaveta de Inspeção das O.S. Futuras -->
+                <!-- Gaveta Retrátil de O.S. Futuras -->
                 <div class="drawer-futuras" id="drawerFuturas">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
                         <strong style="font-size: 12px; color: #0f172a;">🔍 Detalhamento das O.S. com Investimentos em Andamento / Previsão Futura:</strong>
@@ -1446,10 +1444,11 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         state.futurasAberta = !state.futurasAberta;
         const d = document.getElementById('drawerFuturas');
         const b = document.getElementById('btnToggleFuturas');
+        const count = document.getElementById('prevCountBadge') ? document.getElementById('prevCountBadge').textContent : '0';
         if (d) d.className = 'drawer-futuras' + (state.futurasAberta ? ' open' : '');
         if (b) b.textContent = state.futurasAberta 
             ? '✖️ Ocultar O.S. Futuras' 
-            : `👁️ Inspecionar O.S. Futuras (${{document.getElementById('prevCountBadge').textContent}})`;
+            : '👁️ Inspecionar O.S. Futuras (' + count + ')';
     }}
 
     function renderMedicoesPanel() {{
@@ -1477,11 +1476,14 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         const totalComprometido = totalAnualLiberado + totalPrevisto;
         const margemRealLivre = teto - totalComprometido;
 
-        document.getElementById('medTetoBadge').textContent = `Livro Oficial de Medições: Contrato ${{casa}}: R$ ${{fmt(teto)}}`;
-        document.getElementById('prevTitle').textContent = `🛡️ GESTÃO DE RISCO: PREVISÃO DE MEDIÇÕES FUTURAS & SALDO ESTIMADO ( ${{casa}} )`;
+        document.getElementById('medTetoBadge').textContent = 'Livro Oficial de Medições: Contrato ' + casa + ': R$ ' + fmt(teto);
+        document.getElementById('prevTitle').textContent = '🛡️ GESTÃO DE RISCO: PREVISÃO DE MEDIÇÕES FUTURAS & SALDO ESTIMADO ( ' + casa + ' )';
         document.getElementById('prevCountBadge').textContent = chamadosFuturos.length;
-        document.getElementById('badgeSubTab1').textContent = `(${chamadosPeriodo.length})`;
-        document.getElementById('badgeSubTab2').textContent = `(${chamadosFuturos.length})`;
+        
+        const bSub1 = document.getElementById('badgeSubTab1');
+        const bSub2 = document.getElementById('badgeSubTab2');
+        if (bSub1) bSub1.textContent = '(' + chamadosPeriodo.length + ')';
+        if (bSub2) bSub2.textContent = '(' + chamadosFuturos.length + ')';
 
         // 4 KPIs Contratuais
         document.getElementById('medKPIs').innerHTML = `
