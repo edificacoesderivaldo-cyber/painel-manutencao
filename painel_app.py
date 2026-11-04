@@ -4,9 +4,6 @@ import json
 import re
 from datetime import datetime
 
-# Teto contratual por entidade (SESI e SENAI). Fonte única para Python e JS.
-TETO_CONTRATO = 1440000.0
-
 st.set_page_config(
     page_title="Painel de Manutenção Predial",
     page_icon="📊",
@@ -15,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("📊 Painel de Manutenção Predial")
-st.markdown("**Análise de chamados e controle financeiro — SESI e SENAI** | Envie sua planilha Excel para gerar o relatório completo")
+st.markdown("**Análise de chamados e controle financeiro — SESI, SENAI e FIBRA** | Envie sua planilha Excel para gerar o relatório completo")
 
 uploaded_file = st.file_uploader("📎 Envie o arquivo Excel (CONTROLE_DE_O_S.xlsx)", type=["xlsx", "xls"])
 
@@ -116,6 +113,9 @@ if valor_col and valor_col in df_os.columns:
 # Detecção de Descrição e NR
 desc_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['DESCRI', 'SERVIÇO', 'SERVICO', 'ESCOPO', 'OBJETO'])), None)
 nr_col = next((c for c in df_os.columns if str(c).strip().upper() in ['NR', 'NR.', 'Nº', 'NUMERO', 'ITEM', 'N']), None)
+
+# Detecção resiliente de coluna de Casa / Entidade / CNPJ
+casa_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['ENTIDADE', 'CASA', 'INSTITUIÇÃO', 'INSTITUICAO', 'EMPRESA', 'CNPJ'])), None)
 
 if nr_col and nr_col in df_os.columns:
     df_os['NR'] = pd.to_numeric(df_os[nr_col], errors='coerce').fillna(0).astype(int)
@@ -267,10 +267,10 @@ data = {
     'totais': {},
     'meses_existentes': meses_existentes,
     'tem_coluna_orcamento': data_orc_col is not None,
-    'teto_contrato': TETO_CONTRATO,
     'contracts': {
-        'sesi': {'contrato': TETO_CONTRATO, 'utilizado': 0.0, 'saldo': TETO_CONTRATO},
-        'senai': {'contrato': TETO_CONTRATO, 'utilizado': 0.0, 'saldo': TETO_CONTRATO}
+        'sesi': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0},
+        'senai': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0},
+        'fibra': {'contrato': 1440000.0, 'utilizado': 0.0, 'saldo': 1440000.0}
     }
 }
 
@@ -322,7 +322,16 @@ for _, row in df_os.iterrows():
         desc_val = '-'
 
     unidade_str = str(row['UNIDADE'])
-    casa = 'SESI' if 'SESI' in unidade_str.upper() else ('SENAI' if 'SENAI' in unidade_str.upper() else 'OUTROS')
+    casa_col_val = str(row[casa_col]).strip().upper() if casa_col and pd.notna(row[casa_col]) else ''
+
+    if 'FIBRA' in casa_col_val or 'FIBRA' in unidade_str.upper():
+        casa = 'FIBRA'
+    elif 'SENAI' in casa_col_val or 'SENAI' in unidade_str.upper():
+        casa = 'SENAI'
+    elif 'SESI' in casa_col_val or 'SESI' in unidade_str.upper():
+        casa = 'SESI'
+    else:
+        casa = 'SESI' if 'SESI' in unidade_str.upper() else ('SENAI' if 'SENAI' in unidade_str.upper() else ('FIBRA' if 'FIBRA' in unidade_str.upper() else 'OUTROS'))
 
     data['chamados'].append({
         'nr': int(row['NR']),
@@ -353,16 +362,31 @@ for unit in sorted(df_os['UNIDADE'].unique()):
         'status': {str(k): int(v) for k, v in df_u['STATUS'].value_counts().items()}
     }
 
-df_sesi = df_os[df_os['UNIDADE'].str.contains('SESI', case=False, na=False)]
-df_senai = df_os[df_os['UNIDADE'].str.contains('SENAI', case=False, na=False)]
+# Separação por Entidade / Casa (SESI, SENAI e FIBRA)
+filtro_casa_sesi = df_os['UNIDADE'].str.contains('SESI', case=False, na=False)
+filtro_casa_senai = df_os['UNIDADE'].str.contains('SENAI', case=False, na=False)
+filtro_casa_fibra = df_os['UNIDADE'].str.contains('FIBRA', case=False, na=False)
+
+if casa_col:
+    filtro_casa_sesi = filtro_casa_sesi | df_os[casa_col].astype(str).str.contains('SESI', case=False, na=False)
+    filtro_casa_senai = filtro_casa_senai | df_os[casa_col].astype(str).str.contains('SENAI', case=False, na=False)
+    filtro_casa_fibra = filtro_casa_fibra | df_os[casa_col].astype(str).str.contains('FIBRA', case=False, na=False)
+
+df_sesi = df_os[filtro_casa_sesi]
+df_senai = df_os[filtro_casa_senai]
+df_fibra = df_os[filtro_casa_fibra]
 
 sesi_utilizado = round(float(df_sesi[valor_col].sum() if valor_col else 0.0), 2)
 senai_utilizado = round(float(df_senai[valor_col].sum() if valor_col else 0.0), 2)
+fibra_utilizado = round(float(df_fibra[valor_col].sum() if valor_col else 0.0), 2)
 
 data['contracts']['sesi']['utilizado'] = sesi_utilizado
 data['contracts']['senai']['utilizado'] = senai_utilizado
+data['contracts']['fibra']['utilizado'] = fibra_utilizado
+
 data['contracts']['sesi']['saldo'] = round(data['contracts']['sesi']['contrato'] - sesi_utilizado, 2)
 data['contracts']['senai']['saldo'] = round(data['contracts']['senai']['contrato'] - senai_utilizado, 2)
+data['contracts']['fibra']['saldo'] = round(data['contracts']['fibra']['contrato'] - fibra_utilizado, 2)
 
 data['totais'] = {
     'total_chamados': total_chamados,
@@ -374,7 +398,7 @@ data['totais'] = {
     'valor_total': round(valor_total, 2)
 }
 
-HTML_TEMPLATE = r"""<!DOCTYPE html>
+HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -665,6 +689,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             border-color: #ea580c;
             box-shadow: 0 2px 6px rgba(234, 88, 12, 0.25);
         }
+        .filter-chip-med.active-fibra {
+            background: #7c3aed;
+            color: white;
+            border-color: #7c3aed;
+            box-shadow: 0 2px 6px rgba(124, 58, 237, 0.25);
+        }
         .filter-chip-med.active-anual {
             background: #0f172a;
             color: white;
@@ -721,6 +751,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         .filter-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
         .filter-chip-pay { border-color: #bee5eb; background: #f8fbff; }
         .filter-chip-pay.active { background: #0d6efd; border-color: #0d6efd; color: white; }
+        .filter-chip-pay.active-fibra { background: #7c3aed; border-color: #7c3aed; color: white; }
         
         .filter-input {
             padding: 8px 12px;
@@ -780,23 +811,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         .status-aguardando-aprovação, .status-aguardando-aprovacao { background: #ffe5d0; color: #a04000; }
         .status-sem-status { background: #e9ecef; color: #495057; }
         
-        .units-split-container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 10px; }
-        @media (max-width: 900px) { .units-split-container { grid-template-columns: 1fr; } }
+        .units-split-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-top: 10px; }
         .units-column { background: #ffffff; border-radius: 10px; border: 1px solid var(--border); padding: 16px; }
         .units-column-sesi { border-top: 4px solid #0d6efd; background: #fbfdff; }
         .units-column-senai { border-top: 4px solid #e65100; background: #fffbf9; }
+        .units-column-fibra { border-top: 4px solid #7c3aed; background: #faf5ff; }
         .units-column-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 2px solid var(--border); }
         .units-column-title { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
         .units-column-title.sesi { color: #0d6efd; }
         .units-column-title.senai { color: #e65100; }
+        .units-column-title.fibra { color: #7c3aed; }
         .units-column-subtotal { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
         .units-column-subtotal.sesi { background: #e7f3ff; color: #0a58ca; }
         .units-column-subtotal.senai { background: #fff0e6; color: #c44000; }
+        .units-column-subtotal.fibra { background: #f3e8ff; color: #6b21a8; }
         
         .unit-card { padding: 14px 16px; background: white; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: transform 0.2s, box-shadow 0.2s; }
         .unit-card:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
         .unit-card-sesi { border-left: 4px solid #0d6efd; }
         .unit-card-senai { border-left: 4px solid #e65100; }
+        .unit-card-fibra { border-left: 4px solid #7c3aed; }
         .unit-card-name { font-weight: 700; color: #212529; margin-bottom: 10px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .unit-card-info { display: flex; justify-content: space-between; align-items: flex-end; }
         .unit-card-label { font-size: 11px; color: #6c757d; margin-bottom: 2px; text-transform: uppercase; font-weight: 600; }
@@ -804,6 +838,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         .unit-card-value-right { font-weight: 700; font-size: 14px; }
         .unit-card-value-right.sesi { color: #0d6efd; }
         .unit-card-value-right.senai { color: #e65100; }
+        .unit-card-value-right.fibra { color: #7c3aed; }
         
         .btn-action-copy {
             display: inline-flex;
@@ -964,7 +999,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="header">
             <div>
                 <h1>📊 Painel de Manutenção Predial & Liberação de Pagamentos</h1>
-                <p>SESI e SENAI — Acompanhamento de Chamados, Emissão de NFE e Gestão Orçamentária</p>
+                <p>SESI, SENAI e FIBRA — Acompanhamento de Chamados, Emissão de NFE e Gestão Orçamentária</p>
             </div>
             <div class="no-print">
                 <button class="btn-print btn-print-primary" onclick="imprimirRelatorioGeral()" title="Imprime todo o painel consolidado">
@@ -1086,7 +1121,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                             💳 Controle de Pagamentos & Liberação para NFE
                         </h2>
                         <p style="font-size: 13px; color: #666; margin-top: 4px;">
-                            Valide os serviços concluídos por mês e CNPJ (SESI/SENAI) para autorizar a empresa a emitir a Nota Fiscal
+                            Valide os serviços concluídos por mês e CNPJ (SESI, SENAI e FIBRA) para autorizar a empresa a emitir a Nota Fiscal
                         </p>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
@@ -1191,7 +1226,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                             📐 MEDIÇÕES — Controle de Medição Contratual
                         </h2>
                         <p style="font-size: 13px; color: #64748b; margin-top: 4px;">
-                            Livro Oficial de Medições: itens faturados (LIBERADO P/ NFE) com teto e saldo contratual de R$ 1.440.000,00
+                            Livro Oficial de Medições: itens faturados (LIBERADO P/ NFE) com teto e saldo contratual de R$ 1.440.000,00 por Entidade
                         </p>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
@@ -1554,11 +1589,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
         const DATA = __DATA_PLACEHOLDER__;
 
-        // Escapa texto vindo da planilha antes de inserir em HTML.
-        function esc(v) {
-            return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
-
         let state = {
             tickets: [],
             filters: { status: [], unidade: [], os: '', listStatus: '', listUnit: '' },
@@ -1635,14 +1665,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             if (!el) return;
             const fmt = v => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v);
             const contracts = DATA.contracts || {};
-            const sesi = contracts.sesi || { contrato: DATA.teto_contrato, utilizado: 0, saldo: DATA.teto_contrato };
-            const senai = contracts.senai || { contrato: DATA.teto_contrato, utilizado: 0, saldo: DATA.teto_contrato };
+            const sesi = contracts.sesi || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
+            const senai = contracts.senai || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
+            const fibra = contracts.fibra || { contrato: 1440000, utilizado: 0, saldo: 1440000 };
 
             const sesiPct = Math.min(100, (sesi.utilizado / sesi.contrato) * 100).toFixed(1);
             const senaiPct = Math.min(100, (senai.utilizado / senai.contrato) * 100).toFixed(1);
+            const fibraPct = Math.min(100, (fibra.utilizado / fibra.contrato) * 100).toFixed(1);
 
             el.innerHTML = `
-                <div style="margin-bottom: 20px;">
+                <div style="margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-weight: 700; color: #0d6efd;">🔵 CONTRATO SESI</span>
                         <span style="font-size: 13px; font-weight: 700; color: #0d6efd;">R$ ${fmt(sesi.utilizado)} / R$ ${fmt(sesi.contrato)}</span>
@@ -1656,7 +1688,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     </div>
                 </div>
 
-                <div>
+                <div style="margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-weight: 700; color: #e65100;">🟠 CONTRATO SENAI</span>
                         <span style="font-size: 13px; font-weight: 700; color: #e65100;">R$ ${fmt(senai.utilizado)} / R$ ${fmt(senai.contrato)}</span>
@@ -1667,6 +1699,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
                         <span>Utilizado: ${senaiPct}%</span>
                         <span>Saldo Disponível: <strong style="color: #10b981;">R$ ${fmt(senai.saldo)}</strong></span>
+                    </div>
+                </div>
+
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-weight: 700; color: #7c3aed;">🟣 CONTRATO FIBRA</span>
+                        <span style="font-size: 13px; font-weight: 700; color: #7c3aed;">R$ ${fmt(fibra.utilizado)} / R$ ${fmt(fibra.contrato)}</span>
+                    </div>
+                    <div class="progress-bar" style="height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden; margin-bottom: 6px;">
+                        <div style="width: ${fibraPct}%; height: 100%; background: #7c3aed; border-radius: 5px;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
+                        <span>Utilizado: ${fibraPct}%</span>
+                        <span>Saldo Disponível: <strong style="color: #10b981;">R$ ${fmt(fibra.saldo)}</strong></span>
                     </div>
                 </div>
             `;
@@ -1722,7 +1768,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             `;
             statuses.forEach(s => {
                 const active = state.filters.status.includes(s) ? 'active' : '';
-                html += `<span class="filter-chip ${active}" onclick="toggleFilter('status', '${esc(s)}')">${esc(s)}</span>`;
+                html += `<span class="filter-chip ${active}" onclick="toggleFilter('status', '${s}')">${s}</span>`;
             });
             html += `</div></div>`;
             el.innerHTML = html;
@@ -1732,9 +1778,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const casaEl = document.getElementById('payCasaFilters');
             if (casaEl) {
                 casaEl.innerHTML = `
-                    <span class="filter-chip filter-chip-pay ${state.payFilters.casa === '' ? 'active' : ''}" onclick="setPayCasa('')">Todas as Entidades (SESI + SENAI)</span>
+                    <span class="filter-chip filter-chip-pay ${state.payFilters.casa === '' ? 'active' : ''}" onclick="setPayCasa('')">Todas as Entidades (SESI + SENAI + FIBRA)</span>
                     <span class="filter-chip filter-chip-pay ${state.payFilters.casa === 'SESI' ? 'active' : ''}" onclick="setPayCasa('SESI')">🔵 SESI (CNPJ SESI)</span>
                     <span class="filter-chip filter-chip-pay ${state.payFilters.casa === 'SENAI' ? 'active' : ''}" onclick="setPayCasa('SENAI')">🟠 SENAI (CNPJ SENAI)</span>
+                    <span class="filter-chip filter-chip-pay ${state.payFilters.casa === 'FIBRA' ? 'active-fibra' : ''}" onclick="setPayCasa('FIBRA')">🟣 FIBRA (CNPJ FIBRA)</span>
                 `;
             }
 
@@ -1743,7 +1790,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 let mHtml = `<span class="filter-chip filter-chip-pay ${state.payFilters.mes === '' ? 'active' : ''}" onclick="setPayMonth('')">Todos os Meses</span>`;
                 (DATA.meses_existentes || []).forEach(m => {
                     const active = state.payFilters.mes === m ? 'active' : '';
-                    mHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayMonth('${esc(m)}')">📅 ${esc(m)}</span>`;
+                    mHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayMonth('${m}')">📅 ${m}</span>`;
                 });
                 monthEl.innerHTML = mHtml;
             }
@@ -1754,7 +1801,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 let sHtml = `<span class="filter-chip filter-chip-pay ${state.payFilters.statusPagamento === '' ? 'active' : ''}" onclick="setPayStatusPag('')">Todos os Status</span>`;
                 statuses.forEach(s => {
                     const active = state.payFilters.statusPagamento === s ? 'active' : '';
-                    sHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayStatusPag('${esc(s)}')">${esc(s)}</span>`;
+                    sHtml += `<span class="filter-chip filter-chip-pay ${active}" onclick="setPayStatusPag('${s}')">${s}</span>`;
                 });
                 statusEl.innerHTML = sHtml;
             }
@@ -1803,7 +1850,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
             const badge = document.getElementById('paySummaryBadge');
             if (badge) {
-                const casaTxt = state.payFilters.casa || 'SESI + SENAI';
+                const casaTxt = state.payFilters.casa || 'SESI + SENAI + FIBRA';
                 const mesTxt = state.payFilters.mes || 'Todos os Meses';
                 badge.textContent = `Faturamento: R$ ${fmt(valLiberado)} [${casaTxt}] (${mesTxt})`;
             }
@@ -1812,8 +1859,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             if (tbody) {
                 let rows = list.map(t => {
                     const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-                    const casaBadgeColor = t.casa === 'SESI' ? '#0d6efd' : '#e65100';
-                    const casaBadgeBg = t.casa === 'SESI' ? '#e7f3ff' : '#fff3e0';
+                    const casaBadgeColor = t.casa === 'SESI' ? '#0d6efd' : (t.casa === 'SENAI' ? '#e65100' : (t.casa === 'FIBRA' ? '#7c3aed' : '#64748b'));
+                    const casaBadgeBg = t.casa === 'SESI' ? '#e7f3ff' : (t.casa === 'SENAI' ? '#fff3e0' : (t.casa === 'FIBRA' ? '#f5f3ff' : '#f1f5f9'));
                     
                     let libClass = '#64748b';
                     let libBg = '#f1f5f9';
@@ -1825,11 +1872,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                         <tr>
                             <td style="font-weight: 700; color: #0d6efd;">#${t.os}</td>
                             <td>${t.nr}</td>
-                            <td><span style="font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: ${casaBadgeBg}; color: ${casaBadgeColor};">${esc(t.casa)}</span></td>
-                            <td><strong>${esc(t.unidade)}</strong></td>
-                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(t.descricao)}">${esc(t.descricao)}</td>
-                            <td><span style="font-weight: 600; color: #475569;">${esc(t.mes_emissao)}</span></td>
-                            <td><span class="status-badge ${statusClass}">${esc(t.status)}</span></td>
+                            <td><span style="font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: ${casaBadgeBg}; color: ${casaBadgeColor};">${t.casa}</span></td>
+                            <td><strong>${t.unidade}</strong></td>
+                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                            <td><span style="font-weight: 600; color: #475569;">${t.mes_emissao}</span></td>
+                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
                             <td><span style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: ${libBg}; color: ${libClass};">${t.status_pagamento}</span></td>
                             <td style="text-align: right; font-weight: 700; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
                         </tr>
@@ -1844,7 +1891,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
             const tfoot = document.getElementById('payTableFoot');
             if (tfoot) {
-                const casaTxt = state.payFilters.casa || 'SESI + SENAI';
+                const casaTxt = state.payFilters.casa || 'SESI + SENAI + FIBRA';
                 const mesTxt = state.payFilters.mes || 'TODOS OS MESES';
                 tfoot.innerHTML = `
                     <tr>
@@ -1862,7 +1909,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
 
             const sumFootTxt = document.getElementById('paySummaryFooterText');
-            if (sumFootTxt) sumFootTxt.innerHTML = `Fechamento de Faturamento: <strong>${state.payFilters.casa || 'SESI + SENAI'}</strong> (${state.payFilters.mes || 'Todos os Meses'}) — <strong>${liberado.length} O.S.</strong> prontas para emitir NFE`;
+            if (sumFootTxt) sumFootTxt.innerHTML = `Fechamento de Faturamento: <strong>${state.payFilters.casa || 'SESI + SENAI + FIBRA'}</strong> (${state.payFilters.mes || 'Todos os Meses'}) — <strong>${liberado.length} O.S.</strong> prontas para emitir NFE`;
             const sumFootVal = document.getElementById('paySummaryFooterVal');
             if (sumFootVal) sumFootVal.textContent = `Total Liberado: R$ ${fmt(valLiberado)}`;
         }
@@ -1873,6 +1920,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 casaEl.innerHTML = `
                     <span class="filter-chip-med ${state.medFilters.casa === 'SESI' ? 'active-sesi' : ''}" onclick="setMedCasa('SESI')">🔵 SESI (CNPJ SESI)</span>
                     <span class="filter-chip-med ${state.medFilters.casa === 'SENAI' ? 'active-senai' : ''}" onclick="setMedCasa('SENAI')">🟠 SENAI (CNPJ SENAI)</span>
+                    <span class="filter-chip-med ${state.medFilters.casa === 'FIBRA' ? 'active-fibra' : ''}" onclick="setMedCasa('FIBRA')">🟣 FIBRA (CNPJ FIBRA)</span>
                 `;
             }
 
@@ -1880,8 +1928,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             if (periodoEl) {
                 let pHtml = '';
                 (DATA.meses_existentes || []).forEach(m => {
-                    const activeClass = state.medFilters.periodo === m ? (state.medFilters.casa === 'SESI' ? 'active-sesi' : 'active-senai') : '';
-                    pHtml += `<span class="filter-chip-med ${activeClass}" onclick="setMedPeriodo('${esc(m)}')">📅 ${esc(m)}</span>`;
+                    const activeClass = state.medFilters.periodo === m ? (state.medFilters.casa === 'SESI' ? 'active-sesi' : (state.medFilters.casa === 'SENAI' ? 'active-senai' : 'active-fibra')) : '';
+                    pHtml += `<span class="filter-chip-med ${activeClass}" onclick="setMedPeriodo('${m}')">📅 ${m}</span>`;
                 });
                 const activeAnual = state.medFilters.periodo === 'ANUAL' ? 'active-anual' : '';
                 pHtml += `<span class="filter-chip-med ${activeAnual}" onclick="setMedPeriodo('ANUAL')">📊 ACUMULADO ANUAL (Todas as Medições)</span>`;
@@ -1989,7 +2037,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const countSemValor = ticketsCasa.filter(t => t.status !== 'CONCLUIDO' && ((t.valor || 0) === 0)).length;
             const totalItensFuturos = countPrevisaoFutura + countSemValor;
 
-            const tetoContrato = DATA.teto_contrato;
+            const tetoContrato = (DATA.contracts && DATA.contracts[casaAtual.toLowerCase()] && DATA.contracts[casaAtual.toLowerCase()].contrato) || 1440000.00;
             const saldoContratoReal = Math.max(0, tetoContrato - totalAnualCasa);
             const pctSaldoReal = ((saldoContratoReal / tetoContrato) * 100).toFixed(1);
 
@@ -2000,6 +2048,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const pctPrevisto = Math.min(100 - pctMedido, Math.max(0, (valorPrevisaoFutura / tetoContrato) * 100));
             const pctSaldoEstimado = ((saldoEstimado / tetoContrato) * 100).toFixed(1);
 
+            const casaColor = casaAtual === 'SESI' ? '#0284c7' : (casaAtual === 'SENAI' ? '#ea580c' : '#7c3aed');
+
             const medKpiValEl = document.getElementById('medKpiValor');
             if (medKpiValEl) medKpiValEl.textContent = `R$ ${fmt(totalMedicao)}`;
             const periodoLabelTxt = state.medFilters.periodo === 'ANUAL' ? 'no acumulado anual' : 'nesta medição mensal';
@@ -2007,7 +2057,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             if (medKpiSubEl) medKpiSubEl.textContent = `${countMedicao} O.S. liberadas ${periodoLabelTxt}`;
 
             const medKpiAnualEl = document.getElementById('medKpiAnual');
-            if (medKpiAnualEl) medKpiAnualEl.textContent = `R$ ${fmt(totalAnualCasa)}`;
+            if (medKpiAnualEl) {
+                medKpiAnualEl.textContent = `R$ ${fmt(totalAnualCasa)}`;
+                medKpiAnualEl.style.color = casaColor;
+            }
             const medKpiAnualSubEl = document.getElementById('medKpiAnualSub');
             if (medKpiAnualSubEl) medKpiAnualSubEl.textContent = `${countAnualCasa} O.S. faturadas no exercício (${casaAtual})`;
 
@@ -2019,7 +2072,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             if (medKpiSaldoPctEl) medKpiSaldoPctEl.textContent = `${pctSaldoReal}% disponível no teto homologado`;
 
             const labelCasaEl = document.getElementById('medPrevCasaLabel');
-            if (labelCasaEl) labelCasaEl.textContent = casaAtual;
+            if (labelCasaEl) {
+                labelCasaEl.textContent = casaAtual;
+                labelCasaEl.style.color = casaColor;
+            }
 
             const medKpiPrevEl = document.getElementById('medKpiPrevisao');
             if (medKpiPrevEl) medKpiPrevEl.textContent = `R$ ${fmt(valorPrevisaoFutura)}`;
@@ -2088,12 +2144,18 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const barLabel = document.getElementById('medBarraComprometidoLabel');
             if (barLabel) barLabel.textContent = `${pctComprometido}% do teto consumido (R$ ${fmt(totalComprometido)} de R$ 1,44M)`;
             const barMed = document.getElementById('medBarraMedido');
-            if (barMed) barMed.style.width = `${pctMedido}%`;
+            if (barMed) {
+                barMed.style.width = `${pctMedido}%`;
+                barMed.style.background = casaColor;
+            }
             const barPrev = document.getElementById('medBarraPrevisto');
             if (barPrev) barPrev.style.width = `${pctPrevisto}%`;
 
             const legMed = document.getElementById('medLegendaMedido');
-            if (legMed) legMed.textContent = `R$ ${fmt(totalAnualCasa)} (${pctMedido.toFixed(1)}%)`;
+            if (legMed) {
+                legMed.textContent = `R$ ${fmt(totalAnualCasa)} (${pctMedido.toFixed(1)}%)`;
+                legMed.style.color = casaColor;
+            }
             const legPrev = document.getElementById('medLegendaPrevisto');
             if (legPrev) legPrev.textContent = `R$ ${fmt(valorPrevisaoFutura)} (${pctPrevisto.toFixed(1)}%)`;
             const legSaldo = document.getElementById('medLegendaSaldoEstimado');
@@ -2111,8 +2173,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             let rowsHTML = medList
                 .sort((a, b) => b.valor - a.valor)
                 .map(t => {
-                    const casaBadgeColor = t.casa === 'SESI' ? '#0284c7' : '#ea580c';
-                    const casaBadgeBg = t.casa === 'SESI' ? '#e0f2fe' : '#ffedd5';
+                    const casaBadgeColor = t.casa === 'SESI' ? '#0284c7' : (t.casa === 'SENAI' ? '#ea580c' : (t.casa === 'FIBRA' ? '#7c3aed' : '#64748b'));
+                    const casaBadgeBg = t.casa === 'SESI' ? '#e0f2fe' : (t.casa === 'SENAI' ? '#ffedd5' : (t.casa === 'FIBRA' ? '#f5f3ff' : '#f1f5f9'));
 
                     return `
                         <tr>
@@ -2123,9 +2185,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                                     ${t.casa}
                                 </span>
                             </td>
-                            <td><strong>${esc(t.unidade)}</strong></td>
-                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(t.descricao)}">${esc(t.descricao)}</td>
-                            <td><span style="font-size: 12px; font-weight: 700; color: #475569;">${esc(t.mes_emissao)}</span></td>
+                            <td><strong>${t.unidade}</strong></td>
+                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                            <td><span style="font-size: 12px; font-weight: 700; color: #475569;">${t.mes_emissao}</span></td>
                             <td><span class="status-badge status-concluido">CONCLUIDO</span></td>
                             <td>
                                 <span style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;">
@@ -2150,7 +2212,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const footHTML = `
                 <tr>
                     <td colspan="4" style="color: #0f172a; font-size: 13px;">
-                        📌 TOTAL GERAL DA MEDIÇÃO: <span style="color: #0284c7; font-weight: 800;">${casaAtual} | ${periodoLabel}</span>
+                        📌 TOTAL GERAL DA MEDIÇÃO: <span style="color: ${casaColor}; font-weight: 800;">${casaAtual} | ${periodoLabel}</span>
                     </td>
                     <td colspan="4" style="text-align: right; color: #475569; font-size: 12px;">
                         Liberado para NFE: <strong style="color: #10b981;">R$ ${fmt(totalMedicao)} (${countMedicao} O.S.)</strong> &nbsp;|&nbsp; Total da Seleção (${countMedicao} O.S.):
@@ -2204,8 +2266,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 .sort((a, b) => b.valor - a.valor)
                 .map(t => {
                     const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-                    const casaBadgeColor = t.casa === 'SESI' ? '#0284c7' : '#ea580c';
-                    const casaBadgeBg = t.casa === 'SESI' ? '#e0f2fe' : '#ffedd5';
+                    const casaBadgeColor = t.casa === 'SESI' ? '#0284c7' : (t.casa === 'SENAI' ? '#ea580c' : (t.casa === 'FIBRA' ? '#7c3aed' : '#64748b'));
+                    const casaBadgeBg = t.casa === 'SESI' ? '#e0f2fe' : (t.casa === 'SENAI' ? '#ffedd5' : (t.casa === 'FIBRA' ? '#f5f3ff' : '#f1f5f9'));
 
                     let condBadge = '';
                     let valorTxt = '';
@@ -2226,10 +2288,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                                     ${t.casa}
                                 </span>
                             </td>
-                            <td><strong>${esc(t.unidade)}</strong></td>
-                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(t.descricao)}">${esc(t.descricao)}</td>
-                            <td style="font-size: 12px; color: #475569;">${esc(t.data_envio || '-')}</td>
-                            <td><span class="status-badge ${statusClass}">${esc(t.status)}</span></td>
+                            <td><strong>${t.unidade}</strong></td>
+                            <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                            <td style="font-size: 12px; color: #475569;">${t.data_envio || '-'}</td>
+                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
                             <td>${condBadge}</td>
                             <td style="text-align: right;">${valorTxt}</td>
                         </tr>
@@ -2357,7 +2419,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             list.forEach(t => {
                 html += `
                     <tr>
-                        <td>#${t.os}</td><td>${t.nr}</td><td>${esc(t.casa)}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.mes_emissao)}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
+                        <td>#${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
                     </tr>
                 `;
                 plain += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
@@ -2416,7 +2478,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             medList.forEach(t => {
                 html += `
                     <tr>
-                        <td>#${t.os}</td><td>${t.nr}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.mes_emissao)}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #10b981;">R$ ${fmt(t.valor)}</td>
+                        <td>#${t.os}</td><td>${t.nr}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>LIBERADO P/ NFE</td><td style="text-align: right; font-weight: bold; color: #10b981;">R$ ${fmt(t.valor)}</td>
                     </tr>
                 `;
                 plain += `${t.os}\t${t.nr}\t${t.unidade}\t${t.descricao}\t${t.mes_emissao}\tLIBERADO P/ NFE\tR$ ${fmt(t.valor)}\n`;
@@ -2458,7 +2520,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
             medList.forEach(t => {
                 tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.mes_emissao}\t${t.status}\t${t.status_pagamento}\t${fmt(t.valor)}\n`;
-                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${esc(t.casa)}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.mes_emissao)}</td><td>${esc(t.status)}</td><td>${t.status_pagamento}</td><td>${fmt(t.valor)}</td></tr>`;
+                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>${t.status}</td><td>${t.status_pagamento}</td><td>${fmt(t.valor)}</td></tr>`;
             });
 
             tsv += `TOTAL GERAL DA MEDIÇÃO\t\t\t\t\t\t\t\t${fmt(total)}\n`;
@@ -2522,10 +2584,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                         <tr style="background-color: ${bg};">
                             <td style="padding: 8px; font-weight: bold; color: #4338ca;">#${t.os}</td>
                             <td style="padding: 8px;">${t.nr}</td>
-                            <td style="padding: 8px;"><strong>${esc(t.unidade)}</strong></td>
-                            <td style="padding: 8px;">${esc(t.descricao)}</td>
-                            <td style="padding: 8px;">${esc(t.data_envio || '-')}</td>
-                            <td style="padding: 8px;">${esc(t.status)}</td>
+                            <td style="padding: 8px;"><strong>${t.unidade}</strong></td>
+                            <td style="padding: 8px;">${t.descricao}</td>
+                            <td style="padding: 8px;">${t.data_envio || '-'}</td>
+                            <td style="padding: 8px;">${t.status}</td>
                             <td style="padding: 8px; text-align: right; font-weight: bold; color: #4338ca;">${vTxt}</td>
                         </tr>
                     `;
@@ -2570,7 +2632,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     const cond = (t.valor || 0) > 0 ? 'ORÇADO' : 'AGUARDANDO';
                     const vTxt = (t.valor || 0) > 0 ? fmt(t.valor) : '0,00';
                     tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.data_envio || '-'}\t${t.status}\t${cond}\t${vTxt}\n`;
-                    html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${esc(t.casa)}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.data_envio || '-')}</td><td>${esc(t.status)}</td><td>${cond}</td><td>${vTxt}</td></tr>`;
+                    html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.data_envio || '-'}</td><td>${t.status}</td><td>${cond}</td><td>${vTxt}</td></tr>`;
                 });
 
             tsv += `TOTAL PREVISIONADO\t\t\t\t\t\t\t\t${fmt(totalPrev)}\n`;
@@ -2643,10 +2705,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     <tr style="background-color: ${bg};">
                         <td style="padding: 8px; font-weight: bold; color: #0d6efd;">#${t.os}</td>
                         <td style="padding: 8px;">${t.nr}</td>
-                        <td style="padding: 8px;"><strong>${esc(t.unidade)}</strong></td>
-                        <td style="padding: 8px;">${esc(t.descricao)}</td>
-                        <td style="padding: 8px;">${esc(t.status)}</td>
-                        <td style="padding: 8px; text-align: center;">${esc(t.data_envio || '-')}</td>
+                        <td style="padding: 8px;"><strong>${t.unidade}</strong></td>
+                        <td style="padding: 8px;">${t.descricao}</td>
+                        <td style="padding: 8px;">${t.status}</td>
+                        <td style="padding: 8px; text-align: center;">${t.data_envio || '-'}</td>
                         <td style="padding: 8px; text-align: center;">${orcTxt}</td>
                         <td style="padding: 8px; text-align: center; font-weight: bold;">${diasTxt}</td>
                         <td style="padding: 8px; text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
@@ -2705,7 +2767,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 const valorTxt = fmt(t.valor);
 
                 tsv += `${t.os}\t${t.nr}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.status}\t${t.data_envio || '-'}\t${orcTxt}\t${diasTxt}\t${valorTxt}\n`;
-                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${esc(t.unidade)}</td><td>${esc(t.descricao)}</td><td>${esc(t.status)}</td><td>${esc(t.data_envio || '-')}</td><td>${orcTxt}</td><td>${diasTxt}</td><td>${valorTxt}</td></tr>`;
+                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.status}</td><td>${t.data_envio || '-'}</td><td>${orcTxt}</td><td>${diasTxt}</td><td>${valorTxt}</td></tr>`;
             });
 
             tsv += `TOTAL GERAL\t\t\t\t\t\t\t\t${fmt(total)}\n`;
@@ -2801,7 +2863,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const totalPrev = listaPrev.reduce((acc, t) => acc + (t.valor || 0), 0);
             const orcadas = listaPrev.filter(t => (t.valor || 0) > 0);
 
-            const teto = DATA.teto_contrato;
+            const teto = 1440000.00;
             const totalComprometido = totalAnualCasa + totalPrev;
             const saldoEstimado = teto - totalComprometido;
 
@@ -2865,10 +2927,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                         <tr style="background-color: ${bg};">
                             <td style="padding: 5px 6px; border: 1px solid #cbd5e1; font-weight: bold; color: #4338ca;">#${t.os}</td>
                             <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.nr}</td>
-                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;"><strong>${esc(t.unidade)}</strong></td>
-                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${esc(t.descricao)}</td>
-                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${esc(t.data_envio || '-')}</td>
-                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${esc(t.status)}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;"><strong>${t.unidade}</strong></td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.descricao}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.data_envio || '-'}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #cbd5e1;">${t.status}</td>
                             <td style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px; font-weight: bold;">${cond}</td>
                             <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold; color: #312e81;">${vTxt}</td>
                         </tr>
@@ -2964,7 +3026,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             statuses.forEach(s => {
                 const isActive = state.filters.listStatus === s;
                 html += `
-                    <span class="filter-chip ${isActive ? 'active' : ''}" onclick="toggleListStatus('${esc(s)}')">
+                    <span class="filter-chip ${isActive ? 'active' : ''}" onclick="toggleListStatus('${s}')">
                         ${s}
                     </span>
                 `;
@@ -2980,7 +3042,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const todasUnidades = [...new Set(state.tickets.map(t => t.unidade))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
             const sesi = todasUnidades.filter(u => u.toUpperCase().includes('SESI'));
             const senai = todasUnidades.filter(u => u.toUpperCase().includes('SENAI'));
-            const outras = todasUnidades.filter(u => !u.toUpperCase().includes('SESI') && !u.toUpperCase().includes('SENAI'));
+            const fibra = todasUnidades.filter(u => u.toUpperCase().includes('FIBRA') || state.tickets.some(t => t.unidade === u && t.casa === 'FIBRA'));
+            const outras = todasUnidades.filter(u => !u.toUpperCase().includes('SESI') && !u.toUpperCase().includes('SENAI') && !u.toUpperCase().includes('FIBRA') && !fibra.includes(u));
 
             let html = `<option value="">🏢 Todas as Unidades (${todasUnidades.length})</option>`;
 
@@ -2988,7 +3051,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 html += `<optgroup label="🔵 UNIDADES SESI">`;
                 sesi.forEach(u => {
                     const sel = state.filters.listUnit === u ? 'selected' : '';
-                    html += `<option value="${esc(u)}" ${sel}>${esc(u)}</option>`;
+                    html += `<option value="${u}" ${sel}>${u}</option>`;
                 });
                 html += `</optgroup>`;
             }
@@ -2997,7 +3060,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 html += `<optgroup label="🟠 UNIDADES SENAI">`;
                 senai.forEach(u => {
                     const sel = state.filters.listUnit === u ? 'selected' : '';
-                    html += `<option value="${esc(u)}" ${sel}>${esc(u)}</option>`;
+                    html += `<option value="${u}" ${sel}>${u}</option>`;
+                });
+                html += `</optgroup>`;
+            }
+
+            if (fibra.length > 0) {
+                html += `<optgroup label="🟣 UNIDADES FIBRA">`;
+                fibra.forEach(u => {
+                    const sel = state.filters.listUnit === u ? 'selected' : '';
+                    html += `<option value="${u}" ${sel}>${u}</option>`;
                 });
                 html += `</optgroup>`;
             }
@@ -3006,7 +3078,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 html += `<optgroup label="⚪ OUTRAS">`;
                 outras.forEach(u => {
                     const sel = state.filters.listUnit === u ? 'selected' : '';
-                    html += `<option value="${esc(u)}" ${sel}>${esc(u)}</option>`;
+                    html += `<option value="${u}" ${sel}>${u}</option>`;
                 });
                 html += `</optgroup>`;
             }
@@ -3119,8 +3191,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 .filter(u => u.toUpperCase().includes('SENAI'))
                 .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
+            const unidadesFibra = todasUnidades
+                .filter(u => u.toUpperCase().includes('FIBRA') || state.tickets.some(t => t.unidade === u && t.casa === 'FIBRA'))
+                .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
             const unidadesOutras = todasUnidades
-                .filter(u => !u.toUpperCase().includes('SESI') && !u.toUpperCase().includes('SENAI'))
+                .filter(u => !u.toUpperCase().includes('SESI') && !u.toUpperCase().includes('SENAI') && !u.toUpperCase().includes('FIBRA') && !unidadesFibra.includes(u))
                 .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
             if (unidadesOutras.length > 0) {
@@ -3143,12 +3219,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 totalInvestidoSenai += unitData[u].valor;
             });
 
+            let totalChamadosFibra = 0;
+            let totalInvestidoFibra = 0;
+            unidadesFibra.forEach(u => {
+                totalChamadosFibra += Object.values(unitData[u].status).reduce((s, v) => s + v, 0);
+                totalInvestidoFibra += unitData[u].valor;
+            });
+
             const buildCard = (unit, casaClass) => {
                 const total = Object.values(unitData[unit].status).reduce((s, v) => s + v, 0);
                 const valor = unitData[unit].valor;
                 return `
                     <div class="unit-card unit-card-${casaClass}">
-                        <div class="unit-card-name" title="${esc(unit)}">${esc(unit)}</div>
+                        <div class="unit-card-name" title="${unit}">${unit}</div>
                         <div class="unit-card-info">
                             <div>
                                 <div class="unit-card-label">Chamados</div>
@@ -3170,6 +3253,29 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const cardsSenaiHTML = unidadesSenai.length > 0 
                 ? unidadesSenai.map(u => buildCard(u, 'senai')).join('')
                 : '<p style="color: #999; font-size: 13px; text-align: center; padding: 20px;">Nenhuma unidade SENAI localizada.</p>';
+
+            const cardsFibraHTML = unidadesFibra.length > 0
+                ? unidadesFibra.map(u => buildCard(u, 'fibra')).join('')
+                : '<p style="color: #999; font-size: 13px; text-align: center; padding: 20px;">Nenhuma unidade FIBRA localizada.</p>';
+
+            let colunaFibraHTML = '';
+            if (unidadesFibra.length > 0 || totalInvestidoFibra > 0) {
+                colunaFibraHTML = `
+                    <div class="units-column units-column-fibra">
+                        <div class="units-column-header">
+                            <div class="units-column-title fibra">
+                                🟣 UNIDADES FIBRA
+                            </div>
+                            <div class="units-column-subtotal fibra">
+                                ${totalChamadosFibra} chamados &nbsp;|&nbsp; R$ ${fmt(totalInvestidoFibra)}
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px;">
+                            ${cardsFibraHTML}
+                        </div>
+                    </div>
+                `;
+            }
 
             let layoutHTML = legendaHTML + `
                 <div class="units-split-container">
@@ -3200,6 +3306,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                             ${cardsSenaiHTML}
                         </div>
                     </div>
+
+                    ${colunaFibraHTML}
                 </div>
             `;
 
@@ -3258,10 +3366,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                         <tr>
                             <td style="font-weight: 600; color: #0d6efd;">#${t.os}</td>
                             <td>${t.nr}</td>
-                            <td><strong>${esc(t.unidade)}</strong></td>
-                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(t.descricao)}">${esc(t.descricao)}</td>
-                            <td><span class="status-badge ${statusClass}">${esc(t.status)}</span></td>
-                            <td style="text-align: center; font-size: 12px; font-weight: 600; color: #334155;">${esc(t.data_envio || '-')}</td>
+                            <td><strong>${t.unidade}</strong></td>
+                            <td style="max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${t.descricao}">${t.descricao}</td>
+                            <td><span class="status-badge ${statusClass}">${t.status}</span></td>
+                            <td style="text-align: center; font-size: 12px; font-weight: 600; color: #334155;">${t.data_envio || '-'}</td>
                             ${orcHTML}
                             ${diasHTML}
                             <td style="text-align: right; font-weight: 600;">R$ ${valorFmt}</td>
@@ -3306,7 +3414,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 st.subheader("📊 Dashboard Interativo")
 
-html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
+html_content = HTML_TEMPLATE.replace('__DATA_PLACEHOLDER__', json.dumps(data, ensure_ascii=False))
 
 st.components.v1.html(html_content, height=1400, scrolling=True)
 
