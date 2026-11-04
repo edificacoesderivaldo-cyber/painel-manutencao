@@ -24,7 +24,7 @@ try:
     excel_file = pd.ExcelFile(uploaded_file)
     sheet_os = next((s for s in excel_file.sheet_names if any(k in s.upper() for k in ['O.S', 'OS', 'CHAMADO'])), excel_file.sheet_names[0])
     
-    # Identifica dinamicamente em qual linha está o cabeçalho (evita erros se houver linhas no topo)
+    # Identifica dinamicamente em qual linha está o cabeçalho
     df_raw = pd.read_excel(excel_file, sheet_name=sheet_os, header=None)
     header_row_idx = 2  # Padrão original
     for idx in range(min(12, len(df_raw))):
@@ -56,7 +56,7 @@ def norm_unidade(u):
     if pd.isna(u) or str(u).strip() == '': return "NÃO INFORMADA"
     return str(u).strip().upper().replace("GUARA", "GUARÁ")
 
-# Detecção ultra-resiliente de O.S. (evita KeyError caso a coluna venha como OS, O.S., etc.)
+# Detecção ultra-resiliente de O.S.
 os_col = next((c for c in df_os.columns if any(k == str(c).strip().upper() for k in ['O.S', 'OS', 'O.S.', 'Nº OS', 'NUMERO OS', 'ORDEM DE SERVIÇO', 'ORDEM DE SERVICO'])), None)
 if not os_col:
     os_col = next((c for c in df_os.columns if any(k in str(c).strip().upper() for k in ['O.S', 'OS', 'ORDEM'])), None)
@@ -68,11 +68,9 @@ if os_col and os_col in df_os.columns:
 else:
     df_os['O.S'] = range(1, len(df_os) + 1)
 
-# Detecção ultra-resiliente da coluna UNIDADE (por nome ou pelo conteúdo das células)
+# Detecção da coluna UNIDADE
 unidade_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['UNIDADE', 'UNID', 'ESCOLA', 'LOCALIDADE', 'LOCAL', 'PREDIO', 'CENTRO'])), None)
-
 if not unidade_col:
-    # Fallback inteligente: procura qual coluna contém os nomes conhecidos das unidades
     for col in df_os.columns:
         sample = df_os[col].dropna().astype(str).str.upper()
         if len(sample) > 0:
@@ -86,7 +84,7 @@ if unidade_col and unidade_col in df_os.columns:
 else:
     df_os['UNIDADE'] = 'NÃO INFORMADA'
 
-# Detecção ultra-resiliente da coluna STATUS
+# Detecção da coluna STATUS
 status_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['STATUS', 'SITUAÇÃO', 'SITUACAO', 'ESTADO'])), None)
 if not status_col:
     for col in df_os.columns:
@@ -110,11 +108,14 @@ if not valor_col:
 if valor_col and valor_col in df_os.columns:
     df_os[valor_col] = pd.to_numeric(df_os[valor_col], errors='coerce').fillna(0.0)
 
-# Detecção de Descrição e NR
-desc_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['DESCRI', 'SERVIÇO', 'SERVICO', 'ESCOPO', 'OBJETO'])), None)
-nr_col = next((c for c in df_os.columns if str(c).strip().upper() in ['NR', 'NR.', 'Nº', 'NUMERO', 'ITEM', 'N']), None)
+# Detecção prioritária de Descrição Resumida (evitando colunas de data/hora/valor)
+desc_col = next((c for c in df_os.columns if 'DESCRI' in str(c).upper() and 'RESUM' in str(c).upper()), None)
+if not desc_col:
+    desc_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['DESCRI', 'DESCRIÇÃO', 'DESCRICAO', 'ESCOPO', 'OBJETO']) and not any(k in str(c).upper() for k in ['DATA', 'DT', 'HORA', 'VALOR', 'STATUS', 'PREVISÃO'])), None)
+if not desc_col:
+    desc_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['SERVIÇO', 'SERVICO']) and not any(k in str(c).upper() for k in ['DATA', 'DT', 'HORA', 'VALOR', 'STATUS', 'PREVISÃO'])), None)
 
-# Detecção resiliente de coluna de Casa / Entidade / CNPJ
+nr_col = next((c for c in df_os.columns if str(c).strip().upper() in ['NR', 'NR.', 'Nº', 'NUMERO', 'ITEM', 'N']), None)
 casa_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['ENTIDADE', 'CASA', 'INSTITUIÇÃO', 'INSTITUICAO', 'EMPRESA', 'CNPJ'])), None)
 
 if nr_col and nr_col in df_os.columns:
@@ -125,23 +126,19 @@ else:
 def parse_data_br(val):
     """
     Interpreta datas estritamente no padrão brasileiro DIA/MÊS/ANO (DD/MM/AAAA).
-    Preserva com precisão matemática o dia e o mês originais, garantindo que
-    nenhuma data seja alterada ou invertida indevidamente.
+    Preserva com precisão matemática o dia e o mês originais.
     """
     if pd.isna(val) or val == '' or str(val).strip().lower() in ['nan', 'nat', '-', 'none', 'null', '0']:
         return None
 
-    # Se já for Timestamp ou datetime do Python / Excel
     if isinstance(val, (datetime, pd.Timestamp)):
         try:
             return pd.Timestamp(year=val.year, month=val.month, day=val.day)
         except Exception:
             return None
 
-    # Se for string digitada
     if isinstance(val, str):
         val_clean = val.strip()
-        # Padrão brasileiro obrigatório: DD/MM/AAAA ou DD-MM-AAAA
         match_br = re.match(r'^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})', val_clean)
         if match_br:
             d = int(match_br.group(1))
@@ -154,7 +151,6 @@ def parse_data_br(val):
             except Exception:
                 pass
 
-        # Fallback para string no formato ISO: AAAA-MM-DD
         match_iso = re.match(r'^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})', val_clean)
         if match_iso:
             y = int(match_iso.group(1))
@@ -172,7 +168,6 @@ def parse_data_br(val):
         except Exception:
             pass
 
-    # Se for número de série de data do Excel
     if isinstance(val, (int, float)):
         try:
             dt = pd.to_datetime(val, unit='D', origin='1899-12-30', errors='coerce')
@@ -317,8 +312,21 @@ for _, row in df_os.iterrows():
     else:
         status_pagamento = 'PENDENTE ORÇAMENTO'
 
-    desc_val = str(row[desc_col]).strip() if desc_col and pd.notna(row[desc_col]) else ''
-    if desc_val.lower() == 'nan':
+    # Tratamento da Descrição Resumida para evitar carimbo de data/hora
+    desc_val = ""
+    if desc_col and pd.notna(row[desc_col]):
+        cand_d = str(row[desc_col]).strip()
+        if not re.match(r'^\d{4}-\d{2}-\d{2}', cand_d) and not re.match(r'^\d{2}/\d{2}/\d{4}', cand_d):
+            desc_val = cand_d
+    if not desc_val or desc_val.lower() in ['nan', '-', 'none']:
+        for col_cand in df_os.columns:
+            c_up = str(col_cand).upper()
+            if any(k in c_up for k in ['DESC', 'SERVIC', 'OBJETO', 'ITEM']) and not any(k in c_up for k in ['DATA', 'DT', 'HORA', 'VALOR', 'STATUS', 'PREV']):
+                cand = str(row[col_cand]).strip() if pd.notna(row[col_cand]) else ''
+                if cand and not re.match(r'^\d{4}-\d{2}-\d{2}', cand) and not re.match(r'^\d{2}/\d{2}/\d{4}', cand) and cand.lower() not in ['nan', '-']:
+                    desc_val = cand
+                    break
+    if not desc_val:
         desc_val = '-'
 
     unidade_str = str(row['UNIDADE'])
@@ -403,7 +411,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Manutenção Predial e Pagamentos - SESI/SENAI</title>
+    <title>Painel de Manutenção Predial e Pagamentos - SESI/SENAI/FIBRA</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -523,6 +531,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             padding-bottom: 12px;
             border-bottom: 2px solid var(--light);
         }
+
+        /* Botões de Filtro de Entidade (Casa) na Lista Completa */
+        .list-casa-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 12px;
+            background: #ffffff;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .list-casa-btn:hover { background: #f1f5f9; color: #0f172a; }
+        .list-casa-btn.active { background: #0f172a; color: #ffffff; border-color: #0f172a; }
+        .list-casa-btn.active-sesi { background: #0d6efd; color: #ffffff; border-color: #0d6efd; }
+        .list-casa-btn.active-senai { background: #ea580c; color: #ffffff; border-color: #ea580c; }
+        .list-casa-btn.active-fibra { background: #7c3aed; color: #ffffff; border-color: #7c3aed; }
+
         .btn-print {
             display: inline-flex;
             align-items: center;
@@ -730,7 +761,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .progress-container { margin-bottom: 16px; }
         .progress-label { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; color: #666; }
         .progress-bar { width: 100%; height: 8px; background: #e9ecef; border-radius: 4px; overflow: hidden; }
-        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--info), var(--success)); border-radius: 4px; transition: width 0.3s; }
         .chart-wrapper { position: relative; height: 320px; margin: 20px 0; }
         
         .filter-section { display: flex; flex-direction: column; gap: 16px; }
@@ -962,7 +992,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 background: #ffffff !important;
                 color: #000000 !important;
             }
-            .no-print, button, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, #medCasaFilters, #medPeriodoFilters, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav, .btn-inspect-toggle, .med-subtabs-bar { display: none !important; }
+            .no-print, button, .btn-print, .btn-action-copy, .copy-toast, .filter-section, #filters, #payCasaFilters, #payMonthFilters, #payStatusFilters, #listStatusFilter, #medCasaFilters, #medPeriodoFilters, .filter-input, .nav-tabs-bar, .portal-cards-grid, .btn-back-nav, .btn-inspect-toggle, .med-subtabs-bar, .list-casa-btn { display: none !important; }
             .table-wrapper { max-height: none !important; overflow: visible !important; border: none !important; }
             
             .card, .kpi-card, .medicoes-card, .previsao-box, #printSection, #printSection > div { 
@@ -1023,6 +1053,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </button>
         </div>
 
+        <!-- ABA 1: PAINEL INICIAL (VISÃO GERAL) -->
         <div class="tab-view" id="view-inicial" style="display: block;">
             <div class="portal-cards-grid no-print">
                 <div class="portal-card portal-card-pay" onclick="switchTab('pagamentos')">
@@ -1030,7 +1061,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <div style="font-size: 32px;">💳</div>
                         <div>
                             <div style="font-size: 16px; font-weight: 700; color: #0d6efd;">Controle de Pagamentos & NF-e</div>
-                            <div style="font-size: 12px; color: #64748b;">Conferência por Mês e CNPJ (SESI/SENAI) para autorizar emissão de Nota Fiscal</div>
+                            <div style="font-size: 12px; color: #64748b;">Conferência por Mês e CNPJ (SESI/SENAI/FIBRA) para autorizar emissão de Nota Fiscal</div>
                         </div>
                     </div>
                     <button class="btn-print btn-print-primary" style="pointer-events: none; margin-top: 14px;">Acessar Faturamento ➔</button>
@@ -1052,7 +1083,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <div style="font-size: 32px;">📋</div>
                         <div>
                             <div style="font-size: 16px; font-weight: 700; color: #10b981;">Lista Completa de Chamados</div>
-                            <div style="font-size: 12px; color: #64748b;">Tabela com busca por O.S., filtro por Unidade SESI/SENAI e acompanhamento de prazos</div>
+                            <div style="font-size: 12px; color: #64748b;">Tabela com busca por O.S., filtro por Unidade SESI/SENAI/FIBRA e acompanhamento de prazos</div>
                         </div>
                     </div>
                     <button class="btn-print" style="pointer-events: none; margin-top: 14px; border-color: #10b981; color: #10b981;">Ver Chamados ➔</button>
@@ -1097,7 +1128,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="card" id="painelUnidades">
                 <div class="card-title-bar">
                     <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">🏢 Chamados por Unidade (com investimento)</div>
-                    <button class="btn-print no-print" onclick="imprimirPainel('painelUnidades', 'Investimento e Chamados por Unidade (SESI e SENAI)')">🖨️ Imprimir Unidades</button>
+                    <button class="btn-print no-print" onclick="imprimirPainel('painelUnidades', 'Investimento e Chamados por Unidade (SESI, SENAI e FIBRA)')">🖨️ Imprimir Unidades</button>
                 </div>
                 <div class="chart-wrapper" style="height: 500px; margin-bottom: 20px;">
                     <canvas id="unitChart" role="img" aria-label="Distribuição de chamados por unidade"></canvas>
@@ -1106,6 +1137,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- ABA 2: CONTROLE DE PAGAMENTOS & NF-E -->
         <div class="tab-view" id="view-pagamentos" style="display: none;">
             <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
@@ -1214,6 +1246,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- ABA 3: MEDIÇÕES (CONTROLE CONTRATUAL) -->
         <div class="tab-view" id="view-medicoes" style="display: none;">
             <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
                 <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
@@ -1277,7 +1310,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div class="previsao-box" id="medPrevisaoBox">
                     <div class="previsao-header">
                         <div style="font-size: 13px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
-                            🛡️ GESTÃO DE RISCO: PREVISÃO DE MEDIÇÕES FUTURAS & SALDO ESTIMADO (<span id="medPrevCasaLabel" style="color: #0284c7;">SENAI</span>)
+                            🛡️ GESTÃO DE RISCO: PREVISÃO DE MEDIÇÕES FUTURAS & SALDO ESTIMADO (<span id="medPrevCasaLabel" style="color: #0284c7;">SESI</span>)
                         </div>
                         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                             <button type="button" class="btn-inspect-toggle no-print" onclick="switchMedSubTab('previsao')" id="btnToggleInspect">
@@ -1314,7 +1347,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                     <div>
                         <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 6px;">
-                            <span>Consumo do Teto Contratual (R$ 1.440.000,00):</span>
+                            <span id="medConsumoTetoTitulo">Consumo do Teto Contratual:</span>
                             <span id="medBarraComprometidoLabel">0% comprometido (Medições + Previsão)</span>
                         </div>
                         <div style="width: 100%; height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden; display: flex;">
@@ -1340,7 +1373,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                 <div class="no-print" style="background: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
                     <div style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 8px; text-transform: uppercase;">
-                        🏛️️ Entidade Contratual (Casa):
+                        🏛 Entidade Contratual (Casa):
                     </div>
                     <div class="filter-group" id="medCasaFilters" style="margin-bottom: 14px;"></div>
 
@@ -1362,6 +1395,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </button>
                 </div>
 
+                <!-- Tabela de Medições Liberadas -->
                 <div id="sectionMedLiberadas">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
                         <div style="font-size: 14px; font-weight: 800; color: #0284c7; display: flex; align-items: center; gap: 6px;">
@@ -1403,10 +1437,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                     <div class="no-print" style="margin-top: 14px; padding: 12px 16px; background: #f8fafc; border: 1px dashed #0284c7; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                         <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                            <button class="btn-action-copy" style="background: #0284c7;" onclick="copiarMedicaoEmail()" title="Copia a medição selecionada formatada com layout executivo para colar no e-mail (Outlook / Gmail)">
+                            <button class="btn-action-copy" style="background: #0284c7;" onclick="copiarMedicaoEmail()" title="Copia a medição selecionada formatada com layout executivo para colar no e-mail">
                                 📋 Copiar Medição p/ E-mail
                             </button>
-                            <button class="btn-action-copy" style="background: #059669;" onclick="copiarMedicaoExcel()" title="Copia a medição em colunas tabulares prontas para colar diretamente no Excel ou Google Sheets">
+                            <button class="btn-action-copy" style="background: #059669;" onclick="copiarMedicaoExcel()" title="Copia a medição em colunas tabulares prontas para colar diretamente no Excel">
                                 📊 Copiar Medição p/ Planilha
                             </button>
                         </div>
@@ -1414,6 +1448,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
                 </div>
 
+                <!-- Tabela de O.S. Previsionadas (Futuras) -->
                 <div id="sectionMedPrevisionadas" style="display: none; margin-top: 24px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; border-bottom: 2px solid #e0e7ff; padding-bottom: 10px;">
                         <div>
@@ -1462,7 +1497,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                     <div class="summary-ribbon" style="background: #eef2ff; border-color: #c7d2fe;">
                         <div class="left" id="medPrevRibbonText" style="color: #3730a3;">
-                            🛡️ <strong>Total Previsionado:</strong> Entidade: <u>SENAI</u> | O.S. Orçadas: <strong>0 itens</strong> | Margem Real Livre: <strong>R$ 0,00</strong>
+                            🛡️ <strong>Total Previsionado:</strong> Entidade: <u>SESI</u> | O.S. Orçadas: <strong>0 itens</strong> | Margem Real Livre: <strong>R$ 0,00</strong>
                         </div>
                         <div class="right" id="medPrevRibbonVal" style="color: #4338ca;">
                             Previsão Total: R$ 0,00
@@ -1488,6 +1523,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- ABA 4: LISTA COMPLETA DE CHAMADOS -->
         <div class="tab-view" id="view-chamados" style="display: none;">
             <div class="no-print" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
                 <button class="btn-back-nav" onclick="switchTab('inicial')">⬅️ Retornar ao Painel Inicial</button>
@@ -1495,7 +1531,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <div class="card" id="painelChamados">
                 <div class="card-title-bar">
-                    <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📋 Lista Completa de Chamados</div>
+                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                        <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border: none;">📋 Lista Completa de Chamados</div>
+                        <div class="no-print" style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <button type="button" class="list-casa-btn active" id="btnCasaAll" onclick="setListCasa('')">Todas as Entidades</button>
+                            <button type="button" class="list-casa-btn" id="btnCasaSesi" onclick="setListCasa('SESI')">🔵 SESI</button>
+                            <button type="button" class="list-casa-btn" id="btnCasaSenai" onclick="setListCasa('SENAI')">🟠 SENAI</button>
+                            <button type="button" class="list-casa-btn" id="btnCasaFibra" onclick="setListCasa('FIBRA')">🟣 FIBRA</button>
+                        </div>
+                    </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <button class="btn-print no-print" onclick="copiarChamadosEmail()" title="Copiar chamados filtrados formatados para colar no e-mail">
                             📋 Copiar p/ E-mail
@@ -1551,10 +1595,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                 <div class="no-print" style="margin-top: 14px; padding: 12px 16px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                     <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                        <button class="btn-action-copy" style="background: #0d6efd;" onclick="copiarChamadosEmail()" title="Copia a lista filtrada de chamados formatada para e-mail (Outlook / Gmail)">
+                        <button class="btn-action-copy" style="background: #0d6efd;" onclick="copiarChamadosEmail()" title="Copia a lista filtrada de chamados formatada para e-mail">
                             📋 Copiar Lista p/ E-mail
                         </button>
-                        <button class="btn-action-copy" style="background: #059669;" onclick="copiarChamadosExcel()" title="Copia a lista filtrada de chamados em colunas para colar no Excel ou Sheets">
+                        <button class="btn-action-copy" style="background: #059669;" onclick="copiarChamadosExcel()" title="Copia a lista filtrada de chamados em colunas para colar no Excel">
                             📊 Copiar Lista p/ Planilha
                         </button>
                     </div>
@@ -1568,7 +1612,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <div class="footer">
-            <p>Atualizado em <span id="updateTime"></span> | Painel Integrado de Gestão Predial, Medições & Faturamento SESI/SENAI</p>
+            <p>Atualizado em <span id="updateTime"></span> | Painel Integrado de Gestão Predial, Medições & Faturamento SESI/SENAI/FIBRA</p>
         </div>
     </div>
 
@@ -1591,7 +1635,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         let state = {
             tickets: [],
-            filters: { status: [], unidade: [], os: '', listStatus: '', listUnit: '' },
+            filters: { status: [], unidade: [], os: '', listStatus: '', listUnit: '', listCasa: '' },
             payFilters: { mes: '', statusPagamento: '', casa: '' },
             medFilters: { casa: 'SESI', periodo: 'ANUAL', subTab: 'liberadas', filtroPrevStatus: '', searchPrev: '' }
         };
@@ -1613,10 +1657,36 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 if (state.filters.status.length && !state.filters.status.includes(t.status)) return false;
                 if (state.filters.unidade.length && !state.filters.unidade.includes(t.unidade)) return false;
                 if (state.filters.os && !t.os.toString().includes(state.filters.os)) return false;
+                if (state.filters.listCasa && t.casa !== state.filters.listCasa) return false;
                 if (state.filters.listStatus && t.status !== state.filters.listStatus) return false;
                 if (state.filters.listUnit && t.unidade !== state.filters.listUnit) return false;
                 return true;
             });
+        }
+
+        function setListCasa(casa) {
+            state.filters.listCasa = casa;
+            const btns = {
+                '': document.getElementById('btnCasaAll'),
+                'SESI': document.getElementById('btnCasaSesi'),
+                'SENAI': document.getElementById('btnCasaSenai'),
+                'FIBRA': document.getElementById('btnCasaFibra')
+            };
+            Object.keys(btns).forEach(k => {
+                if (btns[k]) {
+                    btns[k].className = 'list-casa-btn' + (casa === k ? (' active' + (k ? '-' + k.toLowerCase() : '')) : '');
+                }
+            });
+            if (casa && state.filters.listUnit) {
+                const belongs = state.tickets.some(t => t.unidade === state.filters.listUnit && t.casa === casa);
+                if (!belongs) {
+                    state.filters.listUnit = '';
+                    const select = document.getElementById('unitSelect');
+                    if (select) select.value = '';
+                }
+            }
+            renderListUnitFilter();
+            renderTable();
         }
 
         function renderKPIs() {
@@ -1655,7 +1725,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div class="kpi-card" style="border-left: 4px solid #10b981;">
                     <div class="kpi-label">Investimento Total</div>
                     <div class="kpi-value" style="font-size: 22px; color: #10b981;">R$ ${fmt(tot.valor_total || 0)}</div>
-                    <div class="kpi-percent">SESI + SENAI acumulado</div>
+                    <div class="kpi-percent">SESI + SENAI + FIBRA</div>
                 </div>
             `;
         }
@@ -2152,6 +2222,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
 
             const tetoResumoTxt = casaAtual === 'FIBRA' ? 'R$ 80 mil' : 'R$ 1,44M';
+            const barTitle = document.getElementById('medConsumoTetoTitulo');
+            if (barTitle) barTitle.textContent = `Consumo do Teto Contratual (R$ ${fmt(tetoContrato)}):`;
             const barLabel = document.getElementById('medBarraComprometidoLabel');
             if (barLabel) barLabel.textContent = `${pctComprometido}% do teto consumido (R$ ${fmt(totalComprometido)} de ${tetoResumoTxt})`;
             const barMed = document.getElementById('medBarraMedido');
@@ -2407,7 +2479,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
 
             const total = list.reduce((s, t) => s + (t.valor || 0), 0);
-            const casaTxt = state.payFilters.casa || 'SESI + SENAI';
+            const casaTxt = state.payFilters.casa || 'SESI + SENAI + FIBRA';
             const mesTxt = state.payFilters.mes || 'Todos os Meses';
 
             let html = `
@@ -2526,15 +2598,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
 
             const total = medList.reduce((s, t) => s + (t.valor || 0), 0);
-            let tsv = `O.S\tNR\tEntidade / CNPJ\tUnidade\tDescrição\tMês Competência\tStatus O.S\tLiberação p/ NFE\tValor a Faturar\n`;
+            let tsv = `O.S\\tNR\\tEntidade / CNPJ\\tUnidade\\tDescrição\\tMês Competência\\tStatus O.S\\tLiberação p/ NFE\\tValor a Faturar\\n`;
             let html = `<table><thead><tr><th>O.S</th><th>NR</th><th>Entidade / CNPJ</th><th>Unidade</th><th>Descrição</th><th>Mês Competência</th><th>Status O.S</th><th>Liberação p/ NFE</th><th>Valor a Faturar</th></tr></thead><tbody>`;
 
             medList.forEach(t => {
-                tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.mes_emissao}\t${t.status}\t${t.status_pagamento}\t${fmt(t.valor)}\n`;
+                tsv += `${t.os}\\t${t.nr}\\t${t.casa}\\t${t.unidade}\\t"${(t.descricao || '').replace(/"/g, '""')}"\\t${t.mes_emissao}\\t${t.status}\\t${t.status_pagamento}\\t${fmt(t.valor)}\\n`;
                 html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.mes_emissao}</td><td>${t.status}</td><td>${t.status_pagamento}</td><td>${fmt(t.valor)}</td></tr>`;
             });
 
-            tsv += `TOTAL GERAL DA MEDIÇÃO\t\t\t\t\t\t\t\t${fmt(total)}\n`;
+            tsv += `TOTAL GERAL DA MEDIÇÃO\\t\\t\\t\\t\\t\\t\\t\\t${fmt(total)}\\n`;
             html += `<tr><td colspan="8">TOTAL GERAL DA MEDIÇÃO</td><td>${fmt(total)}</td></tr></tbody></table>`;
 
             executarCopiaClipboard(html, tsv, `✅ Medição formatada para o Excel! Pressione Ctrl + V.`);
@@ -2582,9 +2654,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <tbody>
             `;
 
-            let plain = `RELATÓRIO DE O.S. COM ORÇAMENTO PREVISIONADO — ${casaAtual}\n`;
-            plain += `Total Previsionado: R$ ${fmt(totalPrev)} (${orcadas.length} O.S. orçadas)\n\n`;
-            plain += `O.S\tNR\tUnidade\tDescrição\tData\tStatus\tPrevisão (R$)\n`;
+            let plain = `RELATÓRIO DE O.S. COM ORÇAMENTO PREVISIONADO — ${casaAtual}\\n`;
+            plain += `Total Previsionado: R$ ${fmt(totalPrev)} (${orcadas.length} O.S. orçadas)\\n\\n`;
+            plain += `O.S\\tNR\\tUnidade\\tDescrição\\tData\\tStatus\\tPrevisão (R$)\\n`;
 
             lista
                 .slice()
@@ -2603,7 +2675,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             <td style="padding: 8px; text-align: right; font-weight: bold; color: #4338ca;">${vTxt}</td>
                         </tr>
                     `;
-                    plain += `${t.os}\t${t.nr}\t${t.unidade}\t${t.descricao}\t${t.data_envio || '-'}\t${t.status}\t${vTxt}\n`;
+                    plain += `${t.os}\\t${t.nr}\\t${t.unidade}\\t${t.descricao}\\t${t.data_envio || '-'}\\t${t.status}\\t${vTxt}\\n`;
                 });
 
             html += `
@@ -2617,7 +2689,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </table>
                 </div>
             `;
-            plain += `\nTOTAL PREVISIONADO: R$ ${fmt(totalPrev)}\n`;
+            plain += `\\nTOTAL PREVISIONADO: R$ ${fmt(totalPrev)}\\n`;
 
             executarCopiaClipboard(html, plain, `✅ Relação de O.S. Previsionadas (${casaAtual}) copiada para E-mail!`);
         }
@@ -2634,7 +2706,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             const totalPrev = lista.reduce((acc, t) => acc + (t.valor || 0), 0);
 
-            let tsv = `O.S\tNR\tEntidade / CNPJ\tUnidade\tDescrição\tData Abertura\tStatus O.S\tCondição\tValor Previsionado\n`;
+            let tsv = `O.S\\tNR\\tEntidade / CNPJ\\tUnidade\\tDescrição\\tData Abertura\\tStatus O.S\\tCondição\\tValor Previsionado\\n`;
             let html = `<table><thead><tr><th>O.S</th><th>NR</th><th>Entidade / CNPJ</th><th>Unidade</th><th>Descrição</th><th>Data Abertura</th><th>Status O.S</th><th>Condição</th><th>Valor Previsionado</th></tr></thead><tbody>`;
 
             lista
@@ -2643,11 +2715,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 .forEach(t => {
                     const cond = (t.valor || 0) > 0 ? 'ORÇADO' : 'AGUARDANDO';
                     const vTxt = (t.valor || 0) > 0 ? fmt(t.valor) : '0,00';
-                    tsv += `${t.os}\t${t.nr}\t${t.casa}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.data_envio || '-'}\t${t.status}\t${cond}\t${vTxt}\n`;
+                    tsv += `${t.os}\\t${t.nr}\\t${t.casa}\\t${t.unidade}\\t"${(t.descricao || '').replace(/"/g, '""')}"\\t${t.data_envio || '-'}\\t${t.status}\\t${cond}\\t${vTxt}\\n`;
                     html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.data_envio || '-'}</td><td>${t.status}</td><td>${cond}</td><td>${vTxt}</td></tr>`;
                 });
 
-            tsv += `TOTAL PREVISIONADO\t\t\t\t\t\t\t\t${fmt(totalPrev)}\n`;
+            tsv += `TOTAL PREVISIONADO\\t\\t\\t\\t\\t\\t\\t\\t${fmt(totalPrev)}\\n`;
             html += `<tr><td colspan="8">TOTAL PREVISIONADO</td><td>${fmt(totalPrev)}</td></tr></tbody></table>`;
 
             executarCopiaClipboard(html, tsv, `✅ O.S. Previsionadas (${casaAtual}) formatadas para Excel! Pressione Ctrl + V.`);
@@ -2673,13 +2745,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const total = sorted.reduce((s, t) => s + (t.valor || 0), 0);
             const statusFiltro = state.filters.listStatus || 'Todos os Status';
             const unidadeFiltro = state.filters.listUnit || 'Todas as Unidades';
+            const casaFiltro = state.filters.listCasa || 'Todas as Entidades (SESI + SENAI + FIBRA)';
 
             let html = `
                 <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5;">
                     <div style="padding: 12px 16px; background-color: #f1f5f9; border-left: 5px solid #0d6efd; margin-bottom: 14px; border-radius: 4px;">
-                        <h3 style="margin: 0 0 6px 0; color: #0d6efd; font-size: 16px;">📋 LISTA DE CHAMADOS DE MANUTENÇÃO PREDIAL — SESI / SENAI</h3>
+                        <h3 style="margin: 0 0 6px 0; color: #0d6efd; font-size: 16px;">📋 LISTA DE CHAMADOS DE MANUTENÇÃO PREDIAL</h3>
                         <p style="margin: 0; font-size: 13px; color: #475569;">
-                            Total de Chamados: <strong>${sorted.length}</strong> | Valor Total: <strong style="color: #0ca30c;">R$ ${fmt(total)}</strong> | Status: <strong>${statusFiltro}</strong> | Unidade: <strong>${unidadeFiltro}</strong>
+                            Entidade: <strong>${casaFiltro}</strong> | Total: <strong>${sorted.length}</strong> | Valor Total: <strong style="color: #0ca30c;">R$ ${fmt(total)}</strong> | Status: <strong>${statusFiltro}</strong> | Unidade: <strong>${unidadeFiltro}</strong>
                         </p>
                     </div>
                     <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #cbd5e1; font-family: Arial, sans-serif;">
@@ -2687,6 +2760,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             <tr style="background-color: #0d6efd; color: #ffffff; text-align: left;">
                                 <th style="padding: 8px;">O.S</th>
                                 <th style="padding: 8px;">NR</th>
+                                <th style="padding: 8px;">Entidade</th>
                                 <th style="padding: 8px;">Unidade</th>
                                 <th style="padding: 8px;">Descrição</th>
                                 <th style="padding: 8px;">Status</th>
@@ -2699,8 +2773,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <tbody>
             `;
 
-            let plain = `LISTA DE CHAMADOS — SESI / SENAI\nTotal: ${sorted.length} chamados | Valor Total: R$ ${fmt(total)}\nFiltros: ${statusFiltro} | ${unidadeFiltro}\n\n`;
-            plain += `O.S\tNR\tUnidade\tDescrição\tStatus\tData Envio\tEntrega Orçamento\tDias Abertos\tValor\n`;
+            let plain = `LISTA DE CHAMADOS — ${casaFiltro}\\nTotal: ${sorted.length} chamados | Valor Total: R$ ${fmt(total)}\\nFiltros: ${statusFiltro} | ${unidadeFiltro}\\n\\n`;
+            plain += `O.S\\tNR\\tEntidade\\tUnidade\\tDescrição\\tStatus\\tData Envio\\tEntrega Orçamento\\tDias Abertos\\tValor\\n`;
 
             sorted.forEach((t, i) => {
                 const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
@@ -2717,6 +2791,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <tr style="background-color: ${bg};">
                         <td style="padding: 8px; font-weight: bold; color: #0d6efd;">#${t.os}</td>
                         <td style="padding: 8px;">${t.nr}</td>
+                        <td style="padding: 8px;"><strong>${t.casa}</strong></td>
                         <td style="padding: 8px;"><strong>${t.unidade}</strong></td>
                         <td style="padding: 8px;">${t.descricao}</td>
                         <td style="padding: 8px;">${t.status}</td>
@@ -2726,21 +2801,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <td style="padding: 8px; text-align: right; font-weight: bold; color: #0ca30c;">R$ ${fmt(t.valor)}</td>
                     </tr>
                 `;
-                plain += `${t.os}\t${t.nr}\t${t.unidade}\t${t.descricao}\t${t.status}\t${t.data_envio || '-'}\t${orcTxt}\t${diasTxt}\tR$ ${fmt(t.valor)}\n`;
+                plain += `${t.os}\\t${t.nr}\\t${t.casa}\\t${t.unidade}\\t${t.descricao}\\t${t.status}\\t${t.data_envio || '-'}\\t${orcTxt}\\t${diasTxt}\\tR$ ${fmt(t.valor)}\\n`;
             });
 
             html += `
                         </tbody>
                         <tfoot>
                             <tr style="background-color: #e9ecef; font-weight: bold;">
-                                <td colspan="8" style="padding: 10px; text-align: right;">TOTAL GERAL (${sorted.length} chamados):</td>
+                                <td colspan="9" style="padding: 10px; text-align: right;">TOTAL GERAL (${sorted.length} chamados):</td>
                                 <td style="padding: 10px; text-align: right; color: #0ca30c; font-size: 13px;">R$ ${fmt(total)}</td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
             `;
-            plain += `\nTOTAL GERAL: R$ ${fmt(total)}\n`;
+            plain += `\\nTOTAL GERAL: R$ ${fmt(total)}\\n`;
 
             executarCopiaClipboard(html, plain, '✅ Lista de chamados copiada para E-mail! Pressione Ctrl + V.');
         }
@@ -2764,8 +2839,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             const total = sorted.reduce((s, t) => s + (t.valor || 0), 0);
 
-            let tsv = `O.S\tNR\tUnidade\tDescrição\tStatus\tData Envio\tEntrega Orçamento\tDias Abertos\tValor\n`;
-            let html = `<table><thead><tr><th>O.S</th><th>NR</th><th>Unidade</th><th>Descrição</th><th>Status</th><th>Data Envio</th><th>Entrega Orçamento</th><th>Dias Abertos</th><th>Valor</th></tr></thead><tbody>`;
+            let tsv = `O.S\\tNR\\tEntidade\\tUnidade\\tDescrição\\tStatus\\tData Envio\\tEntrega Orçamento\\tDias Abertos\\tValor\\n`;
+            let html = `<table><thead><tr><th>O.S</th><th>NR</th><th>Entidade</th><th>Unidade</th><th>Descrição</th><th>Status</th><th>Data Envio</th><th>Entrega Orçamento</th><th>Dias Abertos</th><th>Valor</th></tr></thead><tbody>`;
 
             sorted.forEach(t => {
                 let orcTxt = '-';
@@ -2778,12 +2853,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const diasTxt = t.dias_abertos !== null ? `${t.dias_abertos}d` : '-';
                 const valorTxt = fmt(t.valor);
 
-                tsv += `${t.os}\t${t.nr}\t${t.unidade}\t"${(t.descricao || '').replace(/"/g, '""')}"\t${t.status}\t${t.data_envio || '-'}\t${orcTxt}\t${diasTxt}\t${valorTxt}\n`;
-                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.status}</td><td>${t.data_envio || '-'}</td><td>${orcTxt}</td><td>${diasTxt}</td><td>${valorTxt}</td></tr>`;
+                tsv += `${t.os}\\t${t.nr}\\t${t.casa}\\t${t.unidade}\\t"${(t.descricao || '').replace(/"/g, '""')}"\\t${t.status}\\t${t.data_envio || '-'}\\t${orcTxt}\\t${diasTxt}\\t${valorTxt}\\n`;
+                html += `<tr><td>${t.os}</td><td>${t.nr}</td><td>${t.casa}</td><td>${t.unidade}</td><td>${t.descricao}</td><td>${t.status}</td><td>${t.data_envio || '-'}</td><td>${orcTxt}</td><td>${diasTxt}</td><td>${valorTxt}</td></tr>`;
             });
 
-            tsv += `TOTAL GERAL\t\t\t\t\t\t\t\t${fmt(total)}\n`;
-            html += `<tr><td colspan="8">TOTAL GERAL (${sorted.length} chamados)</td><td>${fmt(total)}</td></tr></tbody></table>`;
+            tsv += `TOTAL GERAL\\t\\t\\t\\t\\t\\t\\t\\t\\t${fmt(total)}\\n`;
+            html += `<tr><td colspan="9">TOTAL GERAL (${sorted.length} chamados)</td><td>${fmt(total)}</td></tr></tbody></table>`;
 
             executarCopiaClipboard(html, tsv, '✅ Lista de chamados formatada para o Excel! Pressione Ctrl + V.');
         }
@@ -2811,7 +2886,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             });
 
-            clone.querySelectorAll('.no-print, button, .btn-print, .btn-action-copy, .btn-inspect-toggle, .copy-toast, .med-subtabs-bar').forEach(n => n.remove());
+            clone.querySelectorAll('.no-print, button, .btn-print, .btn-action-copy, .btn-inspect-toggle, .copy-toast, .med-subtabs-bar, .list-casa-btn').forEach(n => n.remove());
 
             clone.querySelectorAll('.table-wrapper, [style*="max-height"]').forEach(d => {
                 d.style.maxHeight = 'none';
@@ -2830,7 +2905,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             stamp.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
-                        <h1 style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI — Gestão de Manutenção Predial</h1>
+                        <h1 style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">🏢 SESI / SENAI / FIBRA — Gestão de Manutenção Predial</h1>
                         <h2 style="font-size: 13px; font-weight: 700; color: #0284c7; margin: 0;">${titulo || 'Relatório Oficial'}</h2>
                     </div>
                     <div style="text-align: right; font-size: 10px; color: #64748b;">
@@ -2846,7 +2921,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             document.body.classList.add('is-printing-isolated');
             const tituloOriginal = document.title;
-            if (titulo) document.title = `${titulo} - SESI SENAI`;
+            if (titulo) document.title = `${titulo} - SESI SENAI FIBRA`;
 
             window.print();
 
@@ -2984,7 +3059,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             document.body.classList.add('is-printing-isolated');
             const tituloOriginal = document.title;
-            document.title = `${titulo} - SESI SENAI`;
+            document.title = `${titulo} - SESI SENAI FIBRA`;
 
             window.print();
 
@@ -3051,10 +3126,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const select = document.getElementById('unitSelect');
             if (!select) return;
 
-            const todasUnidades = [...new Set(state.tickets.map(t => t.unidade))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+            let baseTickets = state.tickets;
+            if (state.filters.listCasa) {
+                baseTickets = baseTickets.filter(t => t.casa === state.filters.listCasa);
+            }
+
+            const todasUnidades = [...new Set(baseTickets.map(t => t.unidade))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
             const sesi = todasUnidades.filter(u => u.toUpperCase().includes('SESI'));
             const senai = todasUnidades.filter(u => u.toUpperCase().includes('SENAI'));
-            const fibra = todasUnidades.filter(u => u.toUpperCase().includes('FIBRA') || state.tickets.some(t => t.unidade === u && t.casa === 'FIBRA'));
+            const fibra = todasUnidades.filter(u => u.toUpperCase().includes('FIBRA') || baseTickets.some(t => t.unidade === u && t.casa === 'FIBRA'));
             const outras = todasUnidades.filter(u => !u.toUpperCase().includes('SESI') && !u.toUpperCase().includes('SENAI') && !u.toUpperCase().includes('FIBRA') && !fibra.includes(u));
 
             let html = `<option value="">🏢 Todas as Unidades (${todasUnidades.length})</option>`;
@@ -3332,7 +3412,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const countEl = document.getElementById('ticketCount');
             if (countEl) countEl.textContent = filtered.length;
             const totalEl = document.getElementById('totalTickets');
-            if (totalEl) totalEl.textContent = state.tickets.length;
+            if (totalEl) {
+                totalEl.textContent = state.filters.listCasa 
+                    ? state.tickets.filter(t => t.casa === state.filters.listCasa).length 
+                    : state.tickets.length;
+            }
 
             let html = filtered
                 .sort((a, b) => {
