@@ -18,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilização básica da barra do Streamlit
+# Estilização da interface Streamlit
 st.markdown("""
 <style>
     .block-container {
@@ -46,7 +46,6 @@ def norm_unidade(u):
         return "NÃO INFORMADA"
     s = str(u).strip().upper()
     s = re.sub(r'\s+', ' ', s)
-    # Padronização de nomes comuns
     if "CENTRAL" in s and "PARK" in s:
         return "SESI CENTRAL PARK"
     if "SIA" in s:
@@ -72,8 +71,8 @@ def detectar_casa(unidade_str, entidade_cnpj=""):
 
 def parse_data_br(val):
     """
-    Interpretação rigorosa de datas brasileiras no padrão DD/MM/AAAA.
-    Não inverte dia e mês.
+    Interpretação rigorosa de datas brasileiras no padrão DIA/MÊS/ANO (DD/MM/AAAA).
+    Não realiza inversão automática entre dia e mês.
     """
     if pd.isna(val) or val is None:
         return None
@@ -141,7 +140,7 @@ def calcular_prazo_orcamento(data_envio_str, data_orc_str):
 
 
 # ==============================================================================
-# CARREGAMENTO DA PLANILHA E TRATAMENTO
+# CARREGAMENTO DA PLANILHA E TRATAMENTO SEGURO
 # ==============================================================================
 uploaded_file = st.file_uploader("📂 Envie o arquivo Excel (CONTROLE_DE_O_S.xlsx)", type=["xlsx", "xls"])
 
@@ -153,23 +152,22 @@ try:
     xl = pd.ExcelFile(uploaded_file)
     target_sheet = 'O.S' if 'O.S' in xl.sheet_names else xl.sheet_names[0]
     
-    # Detecção dinâmica da linha do cabeçalho nas primeiras 12 linhas
-    df_raw = xl.parse(target_sheet, header=None, nrows=12)
+    # Detecção dinâmica da linha do cabeçalho nas primeiras 15 linhas
+    df_raw = xl.parse(target_sheet, header=None, nrows=15)
     header_idx = 0
     for idx, row in df_raw.iterrows():
         row_str = " ".join([str(v).upper() for v in row.values if pd.notna(v)])
-        if ("O.S" in row_str or "OS" in row_str) and ("STATUS" in row_str or "UNIDADE" in row_str or "DESCRI" in row_str):
+        if ("O.S" in row_str or "OS" in row_str) and ("STATUS" in row_str or "UNIDADE" in row_str or "DESCRI" in row_str or "VALOR" in row_str):
             header_idx = idx
             break
             
     df_os = xl.parse(target_sheet, header=header_idx)
-    # Remove colunas completamente vazias
     df_os = df_os.dropna(how='all', axis=1)
 except Exception as e:
     st.error(f"Erro ao processar o arquivo Excel: {str(e)}")
     st.stop()
 
-# Localização flexível das colunas necessárias
+# Localização flexível e protegida das colunas necessárias
 cols_upper = {str(c).strip().upper(): c for c in df_os.columns}
 
 def find_col(possible_names):
@@ -189,7 +187,7 @@ nfe_status_col = find_col(['LIBERAÇÃO P/ NFE', 'LIBERACAO P/ NFE', 'NFE', 'NOT
 data_envio_col = find_col(['DATA ENVIO', 'DATA DE ENVIO', 'DT ENVIO', 'DATA ABERTURA'])
 data_orc_col = find_col(['ENTREGA ORÇAMENTO', 'ENTREGA ORCAMENTO', 'DATA ORÇAMENTO', 'DT ORCAMENTO'])
 
-# Busca prioritária para a Descrição Resumida (ignorando colunas com data/hora/valor)
+# Busca prioritária para a Descrição Resumida (evitando colunas de data/hora/valor)
 desc_col = None
 for c_up, orig in cols_upper.items():
     if "DESCRI" in c_up and "RESUM" in c_up:
@@ -197,19 +195,18 @@ for c_up, orig in cols_upper.items():
         break
 if not desc_col:
     for c_up, orig in cols_upper.items():
-        if ("DESCRI" in c_up or "SERVIÇO" in c_up or "SERVICO" in c_up) and not any(k in c_up for k in ["DATA", "DT", "HORA", "VALOR", "STATUS"]):
+        if ("DESCRI" in c_up or "SERVIÇO" in c_up or "SERVICO" in c_up) and not any(k in c_up for k in ["DATA", "DT", "HORA", "VALOR", "STATUS", "PREVISÃO"]):
             desc_col = orig
             break
 
-# Leitura da aba de saldo se existir
+# Tetos Contratuais Homologados
 saldo_sesi = 1440000.0
 saldo_senai = 1440000.0
-saldo_fibra = 80000.0 # Teto oficial de R$ 80.000,00 da FIBRA
+saldo_fibra = 80000.0 # Teto contratual oficial da FIBRA: R$ 80.000,00
 
 if 'SALDO' in xl.sheet_names:
     try:
         df_saldo = xl.parse('SALDO')
-        # Procura por valores informados na aba
         for idx, row in df_saldo.iterrows():
             r_str = " ".join([str(v).upper() for v in row.values if pd.notna(v)])
             if "FIBRA" in r_str:
@@ -229,7 +226,7 @@ if 'SALDO' in xl.sheet_names:
 
 
 # ==============================================================================
-# CONSTRUÇÃO DO CONJUNTO DE DADOS NORMALIZADO
+# CONSTRUÇÃO DO CONJUNTO DE DADOS
 # ==============================================================================
 tickets = []
 valid_rows = df_os[df_os[os_col].notna()] if os_col else df_os
@@ -243,14 +240,22 @@ for _, row in valid_rows.iterrows():
     unidade_val = norm_unidade(row[unidade_col]) if unidade_col and pd.notna(row[unidade_col]) else "NÃO INFORMADA"
     status_val = str(row[status_col]).strip().upper() if status_col and pd.notna(row[status_col]) else "SEM STATUS"
     
-    # Tratamento de descrição (evitando datas acidentais)
+    # Tratamento da Descrição Resumida (eliminando datas acidentais)
     desc_val = ""
     if desc_col and pd.notna(row[desc_col]):
         raw_desc = str(row[desc_col]).strip()
-        if not re.match(r'^\d{4}-\d{2}-\d{2}', raw_desc):
+        if not re.match(r'^\d{4}-\d{2}-\d{2}', raw_desc) and not re.match(r'^\d{2}/\d{2}/\d{4}', raw_desc):
             desc_val = raw_desc
+    if not desc_val:
+        for c_up, orig in cols_upper.items():
+            if orig != desc_col and any(k in c_up for k in ["DESC", "SERVIC", "OBJETO", "ITEM"]):
+                if not any(k in c_up for k in ["DATA", "DT", "HORA", "VALOR", "STATUS", "PREVISÃO"]):
+                    cand = str(row[orig]).strip() if pd.notna(row[orig]) else ""
+                    if cand and not re.match(r'^\d{4}-\d{2}-\d{2}', cand) and not re.match(r'^\d{2}/\d{2}/\d{4}', cand):
+                        desc_val = cand
+                        break
             
-    # Tratamento do valor numérico
+    # Tratamento de valores financeiros
     val_num = 0.0
     if valor_col and pd.notna(row[valor_col]):
         try:
@@ -266,7 +271,7 @@ for _, row in valid_rows.iterrows():
     mes_comp = str(row[mes_comp_col]).strip().upper() if mes_comp_col and pd.notna(row[mes_comp_col]) else "NÃO DEFINIDO"
     nfe_val = str(row[nfe_status_col]).strip().upper() if nfe_status_col and pd.notna(row[nfe_status_col]) else ""
     
-    # Datas no padrão estrito BR
+    # Datas no padrão brasileiro
     dt_envio_br = parse_data_br(row[data_envio_col]) if data_envio_col and pd.notna(row[data_envio_col]) else None
     dt_orc_br = parse_data_br(row[data_orc_col]) if data_orc_col and pd.notna(row[data_orc_col]) else None
     
@@ -301,7 +306,7 @@ DATA_JSON = json.dumps(payload_data, ensure_ascii=False)
 
 
 # ==============================================================================
-# TEMPLATE HTML / CSS / JAVASCRIPT DO PAINEL COMPLETO
+# TEMPLATE HTML / CSS / JAVASCRIPT DO PAINEL
 # ==============================================================================
 HTML_TEMPLATE = f"""<!DOCTYPE html>
 <html lang="pt-BR">
@@ -443,6 +448,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         .kpi-card.amber {{ border-left-color: #f59e0b; }}
         .kpi-card.red {{ border-left-color: #ef4444; }}
         .kpi-card.purple {{ border-left-color: #7c3aed; }}
+        .kpi-card.dark {{ border-left-color: #475569; }}
         .kpi-label {{ font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px; }}
         .kpi-val {{ font-size: 22px; font-weight: 800; color: #0f172a; line-height: 1.2; }}
         .kpi-val.green {{ color: #10b981; }}
@@ -617,6 +623,15 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
             margin: 10px 0;
         }}
         .progress-bar-seg {{ height: 100%; transition: width 0.3s; }}
+
+        /* Gaveta Retrátil de O.S. Futuras */
+        .drawer-futuras {{
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px dashed #cbd5e1;
+            display: none;
+        }}
+        .drawer-futuras.open {{ display: block; }}
 
         /* Isolamento para Impressão sem páginas em branco */
         #printSection {{ display: none; }}
@@ -801,20 +816,25 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
                     <div class="card-title">📐 MEDIÇÕES — Controle de Medição Contratual</div>
                     <div style="font-size: 12px; color: #64748b; margin-top: 2px;" id="medTetoBadge">Livro Oficial de Medições com Teto Contratual</div>
                 </div>
-                <div style="display: flex; gap: 8px;" class="no-print">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;" class="no-print">
                     <button class="btn-action" onclick="copiarMedicaoEmail()">📋 Copiar p/ E-mail</button>
                     <button class="btn-action" onclick="copiarMedicaoExcel()">📊 Copiar p/ Planilha</button>
                     <button class="btn-action" onclick="imprimirPainel('painelMedicoes', 'Boletim de Medição Contratual')">🖨️ Imprimir Medição</button>
                 </div>
             </div>
 
+            <!-- 4 KPIs Originais Contratuais -->
             <div class="kpi-grid" id="medKPIs"></div>
 
-            <!-- Bloco de Gestão de Risco e Previsão -->
+            <!-- Bloco de Gestão de Risco e Previsão de Saldo Estimado -->
             <div class="previsao-box" id="previsaoBox">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
                     <div style="font-size: 13px; font-weight: 800; color: #0f172a;" id="prevTitle">🛡️ GESTÃO DE RISCO: PREVISÃO DE MEDIÇÕES FUTURAS & SALDO ESTIMADO</div>
-                    <span class="pill" id="prevRiskBadge" style="background: #dcfce7; color: #15803d;">🟢 MARGEM SEGURA</span>
+                    <div style="display: flex; align-items: center; gap: 8px;" class="no-print">
+                        <button class="btn-action" id="btnToggleFuturas" onclick="toggleFuturasDrawer()">👁️ Inspecionar O.S. Futuras (<span id="prevCountBadge">0</span>)</button>
+                        <span class="pill" id="prevRiskBadge" style="background: #dcfce7; color: #15803d;">🟢 MARGEM SEGURA</span>
+                        <button class="btn-action" onclick="imprimirFuturas()">🖨️ Imprimir Previsão</button>
+                    </div>
                 </div>
                 <div class="kpi-grid" id="prevKPIs" style="margin-bottom: 10px;"></div>
                 <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Consumo Proporcional do Teto Homologado:</div>
@@ -824,6 +844,38 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
                     <span>🟠 Previsão Futura</span>
                     <span>🟢 Margem Livre Restante</span>
                 </div>
+
+                <!-- Gaveta de Inspeção das O.S. Futuras -->
+                <div class="drawer-futuras" id="drawerFuturas">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <strong style="font-size: 12px; color: #0f172a;">🔍 Detalhamento das O.S. com Investimentos em Andamento / Previsão Futura:</strong>
+                        <div style="display: flex; gap: 6px;" class="no-print">
+                            <button class="btn-action" onclick="copiarFuturasEmail()">📋 Copiar Futuras p/ E-mail</button>
+                            <button class="btn-action" onclick="copiarFuturasExcel()">📊 Copiar Futuras p/ Planilha</button>
+                        </div>
+                    </div>
+                    <div class="table-wrapper" style="max-height: 380px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>O.S</th>
+                                    <th>NR</th>
+                                    <th>Unidade</th>
+                                    <th>Descrição Resumida</th>
+                                    <th>Status O.S</th>
+                                    <th style="text-align: right;">Previsão (R$)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="futurasTableBody"></tbody>
+                            <tfoot>
+                                <tr style="background: #f8fafc; font-weight: 800;">
+                                    <td colspan="5" id="futurasFootDesc">TOTAL DE PREVISÕES FUTURAS</td>
+                                    <td id="futurasFootVal" style="text-align: right; color: #ea580c; font-size: 13px;">R$ 0,00</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <!-- Filtros do Módulo de Medição -->
@@ -831,10 +883,11 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
                 <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px;">🏛️ ENTIDADE CONTRATUAL (CASA):</div>
                 <div class="filter-group" id="medCasaFilter"></div>
 
-                <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px;">📅 COMPETÊNCIA OU EXERCÍCIO ANUAL:</div>
+                <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px;">📅 MEDIÇÃO MENSAL DE COMPETÊNCIA OU EXERCÍCIO ANUAL:</div>
                 <div class="filter-group" id="medPeriodoFilter"></div>
             </div>
 
+            <!-- Tabela Oficial de Medições -->
             <div class="table-wrapper">
                 <table>
                     <thead>
@@ -860,6 +913,11 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
                     </tfoot>
                 </table>
             </div>
+
+            <div class="no-print" style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
+                <button class="btn-action" onclick="copiarMedicaoEmail()">📋 Copiar Medição p/ E-mail</button>
+                <button class="btn-action" onclick="copiarMedicaoExcel()">📊 Copiar Medição p/ Planilha</button>
+            </div>
         </div>
     </div>
 
@@ -876,7 +934,6 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
                 <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
                     <div class="card-title" style="margin-bottom: 0;">📋 Lista Completa de Chamados</div>
                     
-                    <!-- Botões Rápidos de Entidade (Casa) solicitados pelo usuário -->
                     <div class="no-print" id="listCasaFilters" style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                         <button type="button" class="list-casa-btn active" id="btnCasaAll" onclick="setListCasa('')">Todas as Entidades</button>
                         <button type="button" class="list-casa-btn" id="btnCasaSesi" onclick="setListCasa('SESI')">🔵 SESI</button>
@@ -885,10 +942,10 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
                     </div>
                 </div>
 
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button class="btn-action no-print" onclick="copiarChamadosEmail()">📋 Copiar p/ E-mail</button>
-                    <button class="btn-action no-print" onclick="copiarChamadosExcel()">📊 Copiar p/ Planilha</button>
-                    <button class="btn-action no-print" onclick="imprimirPainel('painelChamados', 'Lista Completa de Chamados')">🖨️ Imprimir Lista</button>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" class="no-print">
+                    <button class="btn-action" onclick="copiarChamadosEmail()">📋 Copiar p/ E-mail</button>
+                    <button class="btn-action" onclick="copiarChamadosExcel()">📊 Copiar p/ Planilha</button>
+                    <button class="btn-action" onclick="imprimirPainel('painelChamados', 'Lista Completa de Chamados')">🖨️ Imprimir Lista</button>
                 </div>
             </div>
 
@@ -945,7 +1002,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
 <!-- Contêiner Isolado de Impressão -->
 <div id="printSection"></div>
 
-<!-- Mensagem Flutuante de Confirmação (Toast) -->
+<!-- Toast -->
 <div class="toast-msg" id="toastMessage"></div>
 
 <script>
@@ -971,7 +1028,8 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         medFilters: {{
             casa: 'SESI',
             periodo: 'ANUAL'
-        }}
+        }},
+        futurasAberta: false
     }};
 
     const fmt = v => new Intl.NumberFormat('pt-BR', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}).format(v || 0);
@@ -1181,8 +1239,8 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
     function renderPaymentFilters() {{
         const casas = ['', 'SESI', 'SENAI', 'FIBRA'];
         document.getElementById('payCasaFilter').innerHTML = casas.map(c => `
-            <button class="filter-chip ${{state.payFilters.casa === c ? 'active' : ''}}" onclick="setPayCasa('${{c}}')">
-                ${{c === '' ? 'Todas as Entidades' : c}}
+            <button class="filter-chip ${{state.payFilters.casa === c ? (c==='SENAI'?'active-senai':c==='FIBRA'?'active-fibra':'active') : ''}}" onclick="setPayCasa('${{c}}')">
+                ${{c === '' ? 'Todas as Entidades (SESI + SENAI + FIBRA)' : (c==='SESI'?'🔵 SESI':c==='SENAI'?'🟠 SENAI':'🟣 FIBRA')}}
             </button>
         `).join('');
 
@@ -1239,7 +1297,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
             <tr>
                 <td><strong>#${{t.os}}</strong></td>
                 <td>${{t.nr}}</td>
-                <td><span class="pill" style="background: #e2e8f0;">${{t.casa}}</span></td>
+                <td><span class="pill" style="background: ${{t.casa==='SESI'?'#e0f2fe':t.casa==='SENAI'?'#ffedd5':'#f3e8ff'}}; color: ${{t.casa==='SESI'?'#0369a1':t.casa==='SENAI'?'#c2410c':'#7c3aed'}};">${{t.casa}}</span></td>
                 <td><strong>${{t.unidade}}</strong></td>
                 <td>${{t.descricao || '-'}}</td>
                 <td>${{t.mes_competencia}}</td>
@@ -1269,15 +1327,25 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         `).join('');
 
         const meses = [...new Set(state.tickets.map(t => t.mes_competencia))].filter(m => m && m !== 'NÃO DEFINIDO').sort();
-        let mHtml = `<button class="filter-chip ${{state.medFilters.periodo === 'ANUAL' ? 'active-dark' : ''}}" onclick="setMedPeriodo('ANUAL')">📊 ACUMULADO ANUAL (Todas as Medições)</button>`;
-        meses.forEach(m => {{
-            mHtml += `<button class="filter-chip ${{state.medFilters.periodo === m ? 'active' : ''}}" onclick="setMedPeriodo('${{m}}')">${{m}}</button>`;
-        }});
+        let mHtml = meses.map(m => `
+            <button class="filter-chip ${{state.medFilters.periodo === m ? 'active' : ''}}" onclick="setMedPeriodo('${{m}}')">📅 ${{m}}</button>
+        `).join('');
+        mHtml += `<button class="filter-chip ${{state.medFilters.periodo === 'ANUAL' ? 'active-dark' : ''}}" onclick="setMedPeriodo('ANUAL')">📊 ACUMULADO ANUAL (Todas as Medições)</button>`;
         document.getElementById('medPeriodoFilter').innerHTML = mHtml;
     }}
 
     function setMedCasa(c) {{ state.medFilters.casa = c; renderMedicoesPanel(); }}
     function setMedPeriodo(p) {{ state.medFilters.periodo = p; renderMedicoesPanel(); }}
+
+    function toggleFuturasDrawer() {{
+        state.futurasAberta = !state.futurasAberta;
+        const d = document.getElementById('drawerFuturas');
+        const b = document.getElementById('btnToggleFuturas');
+        if (d) d.className = 'drawer-futuras' + (state.futurasAberta ? ' open' : '');
+        if (b) b.textContent = state.futurasAberta 
+            ? '✖️ Ocultar O.S. Futuras' 
+            : `👁️ Inspecionar O.S. Futuras (${{document.getElementById('prevCountBadge').textContent}})`;
+    }}
 
     function renderMedicoesPanel() {{
         renderMedFilters();
@@ -1297,19 +1365,22 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         const saldoDisponivel = teto - totalAnualLiberado;
         const pctDisponivel = Math.max(0, (saldoDisponivel / teto) * 100);
 
-        // Previsão futura (O.S. em andamento / orçadas da casa que não estão liberadas)
+        // Previsão futura: O.S. em andamento / orçadas da casa com valor > 0
         const chamadosFuturos = state.tickets.filter(t => t.casa === casa && t.liberado_nfe !== 'LIBERADO P/ NFE' && (t.valor || 0) > 0);
         const totalPrevisto = chamadosFuturos.reduce((s, t) => s + (t.valor || 0), 0);
         const totalComprometido = totalAnualLiberado + totalPrevisto;
         const margemRealLivre = teto - totalComprometido;
 
-        document.getElementById('medTetoBadge').textContent = `Teto Contratual Oficial: R$ ${{fmt(teto)}} (${{casa}})`;
+        document.getElementById('medTetoBadge').textContent = `Livro Oficial de Medições: Contrato ${{casa}}: R$ ${{fmt(teto)}}`;
+        document.getElementById('prevTitle').textContent = `🛡️ GESTÃO DE RISCO: PREVISÃO DE MEDIÇÕES FUTURAS & SALDO ESTIMADO ( ${{casa}} )`;
+        document.getElementById('prevCountBadge').textContent = chamadosFuturos.length;
 
+        // 4 KPIs Contratuais
         document.getElementById('medKPIs').innerHTML = `
             <div class="kpi-card green">
                 <div class="kpi-label">Valor da Medição Selecionada</div>
                 <div class="kpi-val green">R$ ${{fmt(totalMedicao)}}</div>
-                <div class="kpi-sub">${{chamadosPeriodo.length}} O.S. liberadas</div>
+                <div class="kpi-sub">${{chamadosPeriodo.length}} O.S. liberadas nesta seleção</div>
             </div>
             <div class="kpi-card blue">
                 <div class="kpi-label">Acumulado Anual Liberado</div>
@@ -1319,20 +1390,21 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
             <div class="kpi-card dark">
                 <div class="kpi-label">Teto Contratual Total</div>
                 <div class="kpi-val">R$ ${{fmt(teto)}}</div>
-                <div class="kpi-sub">Valor homologado em contrato</div>
+                <div class="kpi-sub">Valor limite homologado</div>
             </div>
             <div class="kpi-card amber">
                 <div class="kpi-label">Saldo Disponível em Contrato</div>
                 <div class="kpi-val" style="color: #b45309;">R$ ${{fmt(saldoDisponivel)}}</div>
-                <div class="kpi-sub">${{pctDisponivel.toFixed(1)}}% disponível no teto</div>
+                <div class="kpi-sub">${{pctDisponivel.toFixed(1)}}% disponível no teto homologado</div>
             </div>
         `;
 
+        // 3 KPIs de Previsão de Risco
         document.getElementById('prevKPIs').innerHTML = `
             <div class="kpi-card blue">
                 <div class="kpi-label">Previsão em Investimentos (O.S. Futuras)</div>
                 <div class="kpi-val blue">R$ ${{fmt(totalPrevisto)}}</div>
-                <div class="kpi-sub">${{chamadosFuturos.length}} chamados em execução/orçados</div>
+                <div class="kpi-sub">${{chamadosFuturos.length}} O.S. orçadas / em execução</div>
             </div>
             <div class="kpi-card amber">
                 <div class="kpi-label">Total Geral Comprometido (Medido + Previsto)</div>
@@ -1342,7 +1414,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
             <div class="kpi-card green">
                 <div class="kpi-label">Saldo Estimado em Contrato (Margem Real Livre)</div>
                 <div class="kpi-val green">R$ ${{fmt(margemRealLivre)}}</div>
-                <div class="kpi-sub">Valor seguro para novos planejamentos</div>
+                <div class="kpi-sub">Margem segura para novos planejamentos</div>
             </div>
         `;
 
@@ -1358,21 +1430,36 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
 
         const badgeEl = document.getElementById('prevRiskBadge');
         if (margemRealLivre < 0) {{
-            badgeEl.textContent = '⛔ ALERTA DE ESTOURO CONTRATUAL';
+            badgeEl.textContent = '⛔ ESTOURO CONTRATUAL';
             badgeEl.style.background = '#fee2e2'; badgeEl.style.color = '#b91c1c';
         }} else if ((margemRealLivre / teto) < 0.15) {{
             badgeEl.textContent = '🟡 ATENÇÃO: MARGEM CRÍTICA';
             badgeEl.style.background = '#fef3c7'; badgeEl.style.color = '#b45309';
         }} else {{
-            badgeEl.textContent = '🟢 MARGEM CONTRATUAL SEGURA';
+            badgeEl.textContent = '🟢 SALDO ESTIMADO SEGURO';
             badgeEl.style.background = '#dcfce7'; badgeEl.style.color = '#15803d';
         }}
 
+        // Renderiza gaveta de O.S. Futuras
+        document.getElementById('futurasTableBody').innerHTML = chamadosFuturos.map(t => `
+            <tr>
+                <td><strong>#${{t.os}}</strong></td>
+                <td>${{t.nr}}</td>
+                <td><strong>${{t.unidade}}</strong></td>
+                <td>${{t.descricao || '-'}}</td>
+                <td><span class="pill execucao">${{t.status}}</span></td>
+                <td style="text-align: right; font-weight: 700; color: #ea580c;">R$ ${{fmt(t.valor)}}</td>
+            </tr>
+        `).join('');
+        document.getElementById('futurasFootDesc').textContent = `TOTAL DE PREVISÕES FUTURAS (${{chamadosFuturos.length}} O.S.)`;
+        document.getElementById('futurasFootVal').textContent = `R$ ${{fmt(totalPrevisto)}}`;
+
+        // Renderiza Tabela Oficial de Medições Liberadas
         document.getElementById('medTableBody').innerHTML = chamadosPeriodo.map(t => `
             <tr>
                 <td><strong>#${{t.os}}</strong></td>
                 <td>${{t.nr}}</td>
-                <td><span class="pill" style="background: #e2e8f0;">${{t.casa}}</span></td>
+                <td><span class="pill" style="background: ${{t.casa==='SESI'?'#e0f2fe':t.casa==='SENAI'?'#ffedd5':'#f3e8ff'}}; color: ${{t.casa==='SESI'?'#0369a1':t.casa==='SENAI'?'#c2410c':'#7c3aed'}};">${{t.casa}}</span></td>
                 <td><strong>${{t.unidade}}</strong></td>
                 <td>${{t.descricao || '-'}}</td>
                 <td>${{t.mes_competencia}}</td>
@@ -1382,7 +1469,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
             </tr>
         `).join('');
 
-        document.getElementById('medFootDesc').textContent = `TOTAL: ${{casa}} | ${{periodo === 'ANUAL' ? 'EXERCÍCIO ANUAL COMPLETO' : periodo}}`;
+        document.getElementById('medFootDesc').textContent = `TOTAL GERAL: ${{casa}} | ${{periodo === 'ANUAL' ? 'EXERCÍCIO ANUAL COMPLETO' : periodo}}`;
         document.getElementById('medFootLib').textContent = `Aprovado: R$ ${{fmt(totalMedicao)}}`;
         document.getElementById('medFootTotal').textContent = `R$ ${{fmt(totalMedicao)}}`;
     }}
@@ -1518,7 +1605,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         `;
         navigator.clipboard.write([
             new ClipboardItem({{ 'text/html': new Blob([html], {{ type: 'text/html' }}), 'text/plain': new Blob([html], {{ type: 'text/plain' }}) }})
-        ]).then(() => showToast('✅ Lista copiada para colar no E-mail (Ctrl + V)!'));
+        ]).then(() => showToast('✅ Lista copiada para colar no E-mail!'));
     }}
 
     function copiarChamadosExcel() {{
@@ -1528,7 +1615,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         list.forEach(t => {{
             tsv += `${{t.os}}\\t${{t.nr}}\\t${{t.unidade}}\\t${{t.descricao || ''}}\\t${{t.status}}\\t${{t.data_envio}}\\t${{t.entrega_orcamento}}\\t${{t.dias_abertos || ''}}\\tR$ ${{fmt(t.valor)}}\\n`;
         }});
-        navigator.clipboard.writeText(tsv).then(() => showToast('✅ Lista copiada para colar na Planilha (Ctrl + V)!'));
+        navigator.clipboard.writeText(tsv).then(() => showToast('✅ Lista copiada para o Excel!'));
     }}
 
     function copiarTabelaEmail() {{
@@ -1541,7 +1628,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         `;
         navigator.clipboard.write([
             new ClipboardItem({{ 'text/html': new Blob([html], {{ type: 'text/html' }}) }})
-        ]).then(() => showToast('✅ Tabela de faturamento copiada para o E-mail!'));
+        ]).then(() => showToast('✅ Tabela copiada para o E-mail!'));
     }}
 
     function copiarTabelaExcel() {{
@@ -1571,7 +1658,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         `;
         navigator.clipboard.write([
             new ClipboardItem({{ 'text/html': new Blob([html], {{ type: 'text/html' }}) }})
-        ]).then(() => showToast('✅ Medição copiada para colar no E-mail!'));
+        ]).then(() => showToast('✅ Medição copiada para o E-mail!'));
     }}
 
     function copiarMedicaoExcel() {{
@@ -1587,8 +1674,38 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
         navigator.clipboard.writeText(tsv).then(() => showToast('✅ Medição copiada para o Excel!'));
     }}
 
+    function copiarFuturasEmail() {{
+        const casa = state.medFilters.casa;
+        const chamadosFuturos = state.tickets.filter(t => t.casa === casa && t.liberado_nfe !== 'LIBERADO P/ NFE' && (t.valor || 0) > 0);
+        const total = chamadosFuturos.reduce((s, t) => s + (t.valor || 0), 0);
+
+        let html = `
+            <div style="font-family: Arial; color: #1e293b;">
+                <h3 style="color: #ea580c; margin-bottom: 4px;">🛡️ PREVISÃO DE O.S. FUTURAS — ${{casa}}</h3>
+                <p style="font-size: 12px; margin-bottom: 10px;">Total Previsionado: <strong>R$ ${{fmt(total)}}</strong> (${{chamadosFuturos.length}} O.S.)</p>
+                <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 11px; width: 100%;">
+                    <tr style="background: #ea580c; color: #fff;"><th>O.S</th><th>NR</th><th>Unidade</th><th>Descrição</th><th>Status</th><th>Valor Previsionado</th></tr>
+                    ${{chamadosFuturos.map(t => `<tr><td>#${{t.os}}</td><td>${{t.nr}}</td><td>${{t.unidade}}</td><td>${{t.descricao}}</td><td>${{t.status}}</td><td>R$ ${{fmt(t.valor)}}</td></tr>`).join('')}}
+                </table>
+            </div>
+        `;
+        navigator.clipboard.write([
+            new ClipboardItem({{ 'text/html': new Blob([html], {{ type: 'text/html' }}) }})
+        ]).then(() => showToast('✅ O.S. Futuras copiadas para o E-mail!'));
+    }}
+
+    function copiarFuturasExcel() {{
+        const casa = state.medFilters.casa;
+        const chamadosFuturos = state.tickets.filter(t => t.casa === casa && t.liberado_nfe !== 'LIBERADO P/ NFE' && (t.valor || 0) > 0);
+        let tsv = "O.S\\tNR\\tUnidade\\tDescrição\\tStatus\\tValor Previsionado\\n";
+        chamadosFuturos.forEach(t => {{
+            tsv += `${{t.os}}\\t${{t.nr}}\\t${{t.unidade}}\\t${{t.descricao}}\\t${{t.status}}\\tR$ ${{fmt(t.valor)}}\\n`;
+        }});
+        navigator.clipboard.writeText(tsv).then(() => showToast('✅ O.S. Futuras copiadas para o Excel!'));
+    }}
+
     // =========================================================================
-    // IMPRESSÃO ISOLADA
+    // IMPRESSÃO ISOLADA (SEM PÁGINA EM BRANCO)
     // =========================================================================
     function imprimirPainel(elementId, titulo) {{
         const printSec = document.getElementById('printSection');
@@ -1602,6 +1719,27 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
             <div style="margin-bottom: 14px; border-bottom: 2px solid #0f172a; padding-bottom: 8px;">
                 <h2 style="font-size: 18px; color: #0f172a; margin: 0;">SESI / SENAI / FIBRA — Manutenção Predial</h2>
                 <div style="font-size: 12px; color: #475569;">Relatório Oficial: ${{titulo}} • Emitido em: ${{new Date().toLocaleDateString('pt-BR')}}</div>
+            </div>
+        `;
+        printSec.appendChild(clone);
+        window.print();
+        setTimeout(() => {{ printSec.innerHTML = ''; }}, 1000);
+    }}
+
+    function imprimirFuturas() {{
+        const printSec = document.getElementById('printSection');
+        const orig = document.getElementById('previsaoBox');
+        if (!printSec || !orig) return;
+
+        const clone = orig.cloneNode(true);
+        clone.querySelectorAll('.no-print').forEach(el => el.remove());
+        const drawer = clone.querySelector('#drawerFuturas');
+        if (drawer) drawer.style.display = 'block';
+
+        printSec.innerHTML = `
+            <div style="margin-bottom: 14px; border-bottom: 2px solid #0f172a; padding-bottom: 8px;">
+                <h2 style="font-size: 18px; color: #0f172a; margin: 0;">SESI / SENAI / FIBRA — Relatório de Previsão de Medições Futuras</h2>
+                <div style="font-size: 12px; color: #475569;">Emitido em: ${{new Date().toLocaleDateString('pt-BR')}}</div>
             </div>
         `;
         printSec.appendChild(clone);
@@ -1628,7 +1766,7 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
     }}
 
     // =========================================================================
-    // INICIALIZAÇÃO GERAL
+    // INICIALIZAÇÃO
     // =========================================================================
     function init() {{
         renderMainKPIs();
@@ -1649,10 +1787,10 @@ HTML_TEMPLATE = f"""<!DOCTYPE html>
 </body>
 </html>"""
 
-# Renderização segura do componente Streamlit com altura adequada
-components.html(HTML_TEMPLATE, height=1300, scrolling=True)
+# Renderização do componente Streamlit com rolagem e altura otimizada
+components.html(HTML_TEMPLATE, height=1400, scrolling=True)
 
-# Opção de Download do arquivo HTML compilado
+# Exportação do dashboard em HTML
 st.sidebar.markdown("### 💾 Exportar Dashboard")
 st.sidebar.download_button(
     label="Baixar Painel em HTML",
