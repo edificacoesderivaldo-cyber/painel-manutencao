@@ -1928,7 +1928,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const tbody = document.getElementById('payTableBody');
             if (tbody) {
                 let rows = list.map(t => {
-                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\\s+/g, '-').replace(/[^\\w-]/g, '');
                     const casaBadgeColor = t.casa === 'SESI' ? '#0d6efd' : (t.casa === 'SENAI' ? '#e65100' : (t.casa === 'FIBRA' ? '#7c3aed' : '#64748b'));
                     const casaBadgeBg = t.casa === 'SESI' ? '#e7f3ff' : (t.casa === 'SENAI' ? '#fff3e0' : (t.casa === 'FIBRA' ? '#f5f3ff' : '#f1f5f9'));
                     
@@ -2348,7 +2348,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             let rowsHTML = lista
                 .sort((a, b) => b.valor - a.valor)
                 .map(t => {
-                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\\s+/g, '-').replace(/[^\\w-]/g, '');
                     const casaBadgeColor = t.casa === 'SESI' ? '#0284c7' : (t.casa === 'SENAI' ? '#ea580c' : (t.casa === 'FIBRA' ? '#7c3aed' : '#64748b'));
                     const casaBadgeBg = t.casa === 'SESI' ? '#e0f2fe' : (t.casa === 'SENAI' ? '#ffedd5' : (t.casa === 'FIBRA' ? '#f5f3ff' : '#f1f5f9'));
 
@@ -3428,7 +3428,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     return a.unidade.localeCompare(b.unidade) || a.os - b.os;
                 })
                 .map(t => {
-                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                    const statusClass = 'status-' + t.status.toLowerCase().replace(/\\s+/g, '-').replace(/[^\\w-]/g, '');
                     
                     let diasHTML = '';
                     if (t.dias_abertos !== null) {
