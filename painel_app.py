@@ -61,12 +61,29 @@ os_col = next((c for c in df_os.columns if any(k == str(c).strip().upper() for k
 if not os_col:
     os_col = next((c for c in df_os.columns if any(k in str(c).strip().upper() for k in ['O.S', 'OS', 'ORDEM'])), None)
 
+def _os_parse(v):
+    # Aceita numero puro (196609, 1883.0) e O.S com sufixo (198561-1, 198561-2).
+    # Retorna (rotulo_texto, chave_numerica_para_ordenar) ou (None, None) se invalido.
+    s_ = str(v).strip()
+    m_ = re.match(r'^(\d+)(?:\.0+)?(?:\s*-\s*(\d+))?$', s_)
+    if not m_:
+        return None, None
+    base_ = m_.group(1)
+    suf_ = m_.group(2)
+    rotulo_ = f"{base_}-{suf_}" if suf_ else base_
+    chave_ = int(base_) * 100 + (int(suf_) if suf_ else 0)
+    return rotulo_, chave_
+
 if os_col and os_col in df_os.columns:
     df_os = df_os.dropna(subset=[os_col]).copy()
-    df_os['O.S'] = pd.to_numeric(df_os[os_col], errors='coerce').fillna(0).astype(int)
-    df_os = df_os[df_os['O.S'] > 0].copy()
+    _parsed = df_os[os_col].apply(_os_parse)
+    df_os['O.S'] = _parsed.apply(lambda t: t[0])
+    df_os['os_key'] = _parsed.apply(lambda t: t[1])
+    df_os = df_os[df_os['O.S'].notna()].copy()
+    df_os['os_key'] = df_os['os_key'].astype(int)
 else:
-    df_os['O.S'] = range(1, len(df_os) + 1)
+    df_os['O.S'] = [str(i) for i in range(1, len(df_os) + 1)]
+    df_os['os_key'] = range(1, len(df_os) + 1)
 
 # Detecção da coluna UNIDADE
 unidade_col = next((c for c in df_os.columns if any(k in str(c).upper() for k in ['UNIDADE', 'UNID', 'ESCOLA', 'LOCALIDADE', 'LOCAL', 'PREDIO', 'CENTRO'])), None)
@@ -343,7 +360,8 @@ for _, row in df_os.iterrows():
 
     data['chamados'].append({
         'nr': int(row['NR']),
-        'os': int(row['O.S']),
+        'os': str(row['O.S']),
+        'os_key': int(row['os_key']),
         'unidade': unidade_str,
         'casa': casa,
         'status': status,
@@ -2739,7 +2757,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 if (a.dias_abertos !== null && b.dias_abertos !== null) {
                     return b.dias_abertos - a.dias_abertos;
                 }
-                return a.unidade.localeCompare(b.unidade) || a.os - b.os;
+                return a.unidade.localeCompare(b.unidade) || a.os_key - b.os_key;
             });
 
             const total = sorted.reduce((s, t) => s + (t.valor || 0), 0);
@@ -2834,7 +2852,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 if (a.dias_abertos !== null && b.dias_abertos !== null) {
                     return b.dias_abertos - a.dias_abertos;
                 }
-                return a.unidade.localeCompare(b.unidade) || a.os - b.os;
+                return a.unidade.localeCompare(b.unidade) || a.os_key - b.os_key;
             });
 
             const total = sorted.reduce((s, t) => s + (t.valor || 0), 0);
@@ -3425,7 +3443,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     if (a.dias_abertos !== null && b.dias_abertos !== null) {
                         return b.dias_abertos - a.dias_abertos;
                     }
-                    return a.unidade.localeCompare(b.unidade) || a.os - b.os;
+                    return a.unidade.localeCompare(b.unidade) || a.os_key - b.os_key;
                 })
                 .map(t => {
                     const statusClass = 'status-' + t.status.toLowerCase().replace(/\\s+/g, '-').replace(/[^\\w-]/g, '');
